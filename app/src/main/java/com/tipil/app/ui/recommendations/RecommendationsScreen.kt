@@ -18,9 +18,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,7 +65,7 @@ fun RecommendationsScreen(
                 title = { Text("Recommendations") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -102,7 +102,7 @@ fun RecommendationsScreen(
                     modifier = Modifier.padding(32.dp)
                 ) {
                     Icon(
-                        Icons.Default.AutoAwesome,
+                        Icons.Default.Star,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
@@ -254,7 +254,7 @@ private fun RecommendationCard(recommendation: BookRecommendation) {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Default.MenuBook,
+                        Icons.AutoMirrored.Filled.List,
                         contentDescription = null,
                         modifier = Modifier.size(32.dp)
                     )
@@ -307,7 +307,7 @@ private fun RecommendationListItem(recommendation: BookRecommendation) {
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.MenuBook, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Filled.List, contentDescription = null)
                 }
             }
 

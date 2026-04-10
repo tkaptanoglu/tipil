@@ -23,16 +23,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BookmarkAdded
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Recommend
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -128,10 +127,10 @@ fun LibraryScreen(
                         )
                     }
                     IconButton(onClick = onRecommendationsClick) {
-                        Icon(Icons.Default.Recommend, contentDescription = "Recommendations")
+                        Icon(Icons.Default.Star, contentDescription = "Recommendations")
                     }
                     IconButton(onClick = onSignOut) {
-                        Icon(Icons.Default.Logout, contentDescription = "Sign out")
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Sign out")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -142,7 +141,7 @@ fun LibraryScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onScanClick,
-                icon = { Icon(Icons.Default.CameraAlt, contentDescription = null) },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text("Scan Book") },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -188,7 +187,7 @@ fun LibraryScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
-                        Icons.Default.MenuBook,
+                        Icons.AutoMirrored.Filled.List,
                         contentDescription = null,
                         modifier = Modifier.size(80.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
@@ -306,7 +305,7 @@ private fun BookCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Default.MenuBook,
+                        Icons.AutoMirrored.Filled.List,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -354,8 +353,8 @@ private fun BookCard(
                         },
                         leadingIcon = {
                             Icon(
-                                if (book.isRead) Icons.Default.BookmarkAdded
-                                else Icons.Default.BookmarkBorder,
+                                if (book.isRead) Icons.Default.Favorite
+                                else Icons.Default.FavoriteBorder,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
                                 tint = readColor

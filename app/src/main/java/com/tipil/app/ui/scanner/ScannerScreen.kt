@@ -27,11 +27,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.LibraryBooks
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -62,7 +62,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -88,7 +87,7 @@ fun ScannerScreen(
                 title = { Text("Scan Book") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -137,7 +136,7 @@ fun ScannerScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Default.MenuBook,
+                            Icons.AutoMirrored.Filled.List,
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -173,7 +172,7 @@ fun ScannerScreen(
                             onClick = { viewModel.addToLibrary(userId, state.result) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.LibraryBooks, contentDescription = null)
+                            Icon(Icons.Default.Done, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Add to Library")
                         }
@@ -188,7 +187,7 @@ fun ScannerScreen(
                     is ScanState.AlreadyInLibrary -> {
                         Spacer(modifier = Modifier.height(32.dp))
                         Icon(
-                            Icons.Default.LibraryBooks,
+                            Icons.Default.Done,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.primary
@@ -207,7 +206,7 @@ fun ScannerScreen(
                     is ScanState.NotFound -> {
                         Spacer(modifier = Modifier.height(32.dp))
                         Icon(
-                            Icons.Default.Error,
+                            Icons.Default.Warning,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.error
@@ -244,7 +243,7 @@ fun ScannerScreen(
                     is ScanState.Added -> {
                         Spacer(modifier = Modifier.height(32.dp))
                         Icon(
-                            Icons.Default.CheckCircle,
+                            Icons.Default.Check,
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
                             tint = ReadGreen
