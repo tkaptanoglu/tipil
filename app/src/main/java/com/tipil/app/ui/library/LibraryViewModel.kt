@@ -16,11 +16,18 @@ import javax.inject.Inject
 enum class ReadFilter { ALL, READ, UNREAD }
 enum class TypeFilter { ALL, FICTION, NON_FICTION }
 
+enum class SortOrder(val label: String) {
+    AUTHOR_AZ("Author A–Z"),
+    DATE_ADDED_NEWEST("Newest first"),
+    DATE_ADDED_OLDEST("Oldest first")
+}
+
 data class LibraryUiState(
     val books: List<BookEntity> = emptyList(),
     val allBooks: List<BookEntity> = emptyList(),
     val readFilter: ReadFilter = ReadFilter.ALL,
     val typeFilter: TypeFilter = TypeFilter.ALL,
+    val sortOrder: SortOrder = SortOrder.AUTHOR_AZ,
     val selectedGenre: String? = null,
     val availableGenres: List<String> = emptyList(),
     val searchQuery: String = "",
@@ -64,6 +71,11 @@ class LibraryViewModel @Inject constructor(
 
     fun setTypeFilter(filter: TypeFilter) {
         _uiState.update { it.copy(typeFilter = filter) }
+        applyFilters()
+    }
+
+    fun setSortOrder(order: SortOrder) {
+        _uiState.update { it.copy(sortOrder = order) }
         applyFilters()
     }
 
@@ -124,7 +136,30 @@ class LibraryViewModel @Inject constructor(
                 }
             }
 
+            // Sort
+            filtered = when (state.sortOrder) {
+                SortOrder.AUTHOR_AZ -> filtered.sortedBy { extractLastName(it.authors) }
+                SortOrder.DATE_ADDED_NEWEST -> filtered.sortedByDescending { it.addedAt }
+                SortOrder.DATE_ADDED_OLDEST -> filtered.sortedBy { it.addedAt }
+            }
+
             state.copy(books = filtered)
         }
+    }
+
+    /**
+     * Extracts the last name of the first author for sorting.
+     * Handles "First Last", "First Middle Last", and "Last, First" formats.
+     */
+    private fun extractLastName(authors: String): String {
+        val firstAuthor = authors.split(",").first().trim()
+        if (firstAuthor.isBlank()) return ""
+        // If the original string had "Last, First" format and we split on comma,
+        // firstAuthor is already the last name
+        if (authors.contains(",") && !authors.substringBefore(",").contains(" ")) {
+            return firstAuthor.lowercase()
+        }
+        // "First Last" or "First Middle Last" — take the final word
+        return firstAuthor.split(" ").last().lowercase()
     }
 }
