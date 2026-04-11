@@ -4,6 +4,7 @@ import android.util.Log
 import com.tipil.app.BuildConfig
 import com.tipil.app.data.local.BookDao
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.remote.GoogleBooksApi
 import com.tipil.app.data.remote.VolumeInfo
 import com.tipil.app.util.GenreClassifier
@@ -23,6 +24,9 @@ class BookRepository @Inject constructor(
     fun getUserBooks(userId: String): Flow<List<BookEntity>> =
         bookDao.getBooksByUser(userId)
 
+    fun getUserBooksByType(userId: String, mediaType: MediaType): Flow<List<BookEntity>> =
+        bookDao.getBooksByUserAndType(userId, mediaType.name)
+
     fun getReadBooks(userId: String): Flow<List<BookEntity>> =
         bookDao.getReadBooks(userId)
 
@@ -31,6 +35,12 @@ class BookRepository @Inject constructor(
 
     fun getBookCount(userId: String): Flow<Int> =
         bookDao.getBookCount(userId)
+
+    fun getBookCountByType(userId: String, mediaType: MediaType): Flow<Int> =
+        bookDao.getBookCountByType(userId, mediaType.name)
+
+    fun getMediaTypesForUser(userId: String): Flow<List<String>> =
+        bookDao.getMediaTypesForUser(userId)
 
     suspend fun getBookById(bookId: Long, userId: String): BookEntity? =
         bookDao.getBookById(bookId, userId)
@@ -190,7 +200,8 @@ data class BookLookupResult(
     val isFiction: Boolean,
     val genres: List<String>,
     val coverUrl: String,
-    val description: String
+    val description: String,
+    val mediaType: MediaType = MediaType.BOOK
 )
 
 data class BookRecommendation(
@@ -200,7 +211,8 @@ data class BookRecommendation(
     val description: String,
     val reason: String,
     val isbn: String,
-    val isFiction: Boolean = true
+    val isFiction: Boolean = true,
+    val mediaType: MediaType = MediaType.BOOK
 )
 
 private fun com.tipil.app.data.remote.BookItem.toRecommendation(

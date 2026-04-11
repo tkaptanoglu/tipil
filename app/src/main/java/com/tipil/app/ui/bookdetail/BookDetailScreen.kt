@@ -53,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.tipil.app.data.local.MediaType
 import com.tipil.app.ui.theme.LocalExtraColors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -76,9 +77,10 @@ fun BookDetailScreen(
     }
 
     if (showDeleteDialog) {
+        val itemTypeName = uiState.book?.let { MediaType.fromName(it.mediaType).label } ?: "Item"
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Remove Book") },
+            title = { Text("Remove $itemTypeName") },
             text = { Text("Remove \"${uiState.book?.title}\" from your library?") },
             confirmButton = {
                 TextButton(
@@ -100,8 +102,11 @@ fun BookDetailScreen(
 
     Scaffold(
         topBar = {
+            val detailTitle = uiState.book?.let {
+                "${MediaType.fromName(it.mediaType).label} Details"
+            } ?: "Details"
             TopAppBar(
-                title = { Text("Book Details") },
+                title = { Text(detailTitle) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -192,7 +197,13 @@ fun BookDetailScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Read status toggle
+            // Consumed status toggle — label depends on media type
+            val consumedLabel = when (MediaType.fromName(book.mediaType)) {
+                MediaType.BOOK, MediaType.MAGAZINE -> if (book.isRead) "Marked as Read" else "Mark as Read"
+                MediaType.CD, MediaType.CASSETTE -> if (book.isRead) "Marked as Listened" else "Mark as Listened"
+                MediaType.DVD -> if (book.isRead) "Marked as Watched" else "Mark as Watched"
+                MediaType.BOARD_GAME -> if (book.isRead) "Marked as Played" else "Mark as Played"
+            }
             Button(
                 onClick = { viewModel.toggleReadStatus() },
                 modifier = Modifier.fillMaxWidth(),
@@ -205,7 +216,7 @@ fun BookDetailScreen(
                     contentDescription = null
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(if (book.isRead) "Marked as Read" else "Mark as Read")
+                Text(consumedLabel)
             }
 
             Spacer(modifier = Modifier.height(20.dp))

@@ -31,7 +31,7 @@ object AppModule {
             TipilDatabase::class.java,
             "tipil_database"
         )
-            .addMigrations(TipilDatabase.MIGRATION_1_2)
+            .addMigrations(TipilDatabase.MIGRATION_1_2, TipilDatabase.MIGRATION_2_3)
             .build()
     }
 

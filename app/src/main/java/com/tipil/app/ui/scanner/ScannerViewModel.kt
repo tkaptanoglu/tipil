@@ -3,6 +3,7 @@ package com.tipil.app.ui.scanner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookLookupResult
 import com.tipil.app.data.repository.BookRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -79,7 +80,8 @@ class ScannerViewModel @Inject constructor(
                     genres = result.genres,
                     coverUrl = result.coverUrl,
                     description = result.description,
-                    addedAt = System.currentTimeMillis()
+                    addedAt = System.currentTimeMillis(),
+                    mediaType = result.mediaType.name
                 )
                 repository.addBook(book)
                 _scanState.update { ScanState.Added }

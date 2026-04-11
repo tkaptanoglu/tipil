@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaType
 import com.tipil.app.ui.theme.LocalExtraColors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -100,7 +101,7 @@ fun LibraryScreen(
                         TextField(
                             value = uiState.searchQuery,
                             onValueChange = { viewModel.setSearchQuery(it) },
-                            placeholder = { Text("Search books...") },
+                            placeholder = { Text("Search library...") },
                             singleLine = true,
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -113,8 +114,17 @@ fun LibraryScreen(
                     } else {
                         Column {
                             Text("MY LIBRARY", style = MaterialTheme.typography.headlineSmall)
+                            val countLabel = when (uiState.selectedMediaType) {
+                                null -> "${uiState.bookCount} items"
+                                MediaType.BOOK -> "${uiState.bookCount} books"
+                                MediaType.CD -> "${uiState.bookCount} CDs"
+                                MediaType.CASSETTE -> "${uiState.bookCount} cassettes"
+                                MediaType.DVD -> "${uiState.bookCount} DVDs"
+                                MediaType.MAGAZINE -> "${uiState.bookCount} magazines"
+                                MediaType.BOARD_GAME -> "${uiState.bookCount} board games"
+                            }
                             Text(
-                                "${uiState.bookCount} books",
+                                countLabel,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -147,10 +157,18 @@ fun LibraryScreen(
             )
         },
         floatingActionButton = {
+            val scanLabel = when (uiState.selectedMediaType) {
+                MediaType.CD -> "SCAN CD"
+                MediaType.CASSETTE -> "SCAN CASSETTE"
+                MediaType.DVD -> "SCAN DVD"
+                MediaType.MAGAZINE -> "SCAN MAGAZINE"
+                MediaType.BOARD_GAME -> "SCAN GAME"
+                else -> "SCAN ITEM"
+            }
             ExtendedFloatingActionButton(
                 onClick = onScanClick,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("SCAN BOOK", style = MaterialTheme.typography.labelLarge) },
+                text = { Text(scanLabel, style = MaterialTheme.typography.labelLarge) },
                 containerColor = MaterialTheme.colorScheme.tertiary,
                 contentColor = MaterialTheme.colorScheme.onTertiary
             )
@@ -161,6 +179,37 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // ── Media type tabs ──
+            if (uiState.availableMediaTypes.size > 1 || uiState.selectedMediaType != null) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = uiState.selectedMediaType == null,
+                            onClick = { viewModel.setMediaTypeFilter(null) },
+                            label = { Text("All") }
+                        )
+                    }
+                    items(uiState.availableMediaTypes) { mediaType ->
+                        FilterChip(
+                            selected = uiState.selectedMediaType == mediaType,
+                            onClick = { viewModel.setMediaTypeFilter(mediaType) },
+                            label = { Text(mediaType.label + "s") }
+                        )
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            }
+
             // ── Tier 1: Fiction / Non-Fiction + Read status ──
             Row(
                 modifier = Modifier
@@ -305,14 +354,17 @@ fun LibraryScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
+                    val emptyLabel = if (uiState.selectedMediaType != null)
+                        "No ${uiState.selectedMediaType!!.label.lowercase()}s yet"
+                    else "Your library is empty"
                     Text(
-                        "Your library is empty",
+                        emptyLabel,
                         style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Tap \"Scan Book\" to add your first book by scanning its barcode.",
+                        "Tap the scan button to add your first item by scanning its barcode.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -472,12 +524,18 @@ private fun BookCard(
                         modifier = Modifier.height(28.dp)
                     )
 
-                    // Read status chip
+                    // Consumed status chip — label depends on media type
+                    val consumedText = when (MediaType.fromName(book.mediaType)) {
+                        MediaType.BOOK, MediaType.MAGAZINE -> if (book.isRead) "Read" else "Unread"
+                        MediaType.CD, MediaType.CASSETTE -> if (book.isRead) "Listened" else "Not Listened"
+                        MediaType.DVD -> if (book.isRead) "Watched" else "Not Watched"
+                        MediaType.BOARD_GAME -> if (book.isRead) "Played" else "Not Played"
+                    }
                     AssistChip(
                         onClick = onToggleRead,
                         label = {
                             Text(
-                                if (book.isRead) "Read" else "Unread",
+                                consumedText,
                                 style = MaterialTheme.typography.labelSmall
                             )
                         },

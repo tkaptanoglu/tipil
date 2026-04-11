@@ -3,6 +3,7 @@ package com.tipil.app.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookRepository
 import com.tipil.app.util.Tier1Labels
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -32,7 +33,11 @@ data class LibraryUiState(
     val availableGenres: List<String> = emptyList(),
     val searchQuery: String = "",
     val isLoading: Boolean = true,
-    val bookCount: Int = 0
+    val bookCount: Int = 0,
+    /** Which media type tab is currently selected. null = show all types. */
+    val selectedMediaType: MediaType? = null,
+    /** Which media types the user actually has items for (drives tab visibility). */
+    val availableMediaTypes: List<MediaType> = emptyList()
 )
 
 @HiltViewModel
@@ -51,12 +56,20 @@ class LibraryViewModel @Inject constructor(
                     .filter { it.lowercase() !in Tier1Labels.labels }
                     .distinct()
                     .sorted()
+
+                // Determine which media types the user has items for
+                val mediaTypes = books
+                    .map { MediaType.fromName(it.mediaType) }
+                    .distinct()
+                    .sortedBy { it.ordinal }
+
                 _uiState.update {
                     it.copy(
                         allBooks = books,
                         isLoading = false,
                         bookCount = books.size,
-                        availableGenres = genres
+                        availableGenres = genres,
+                        availableMediaTypes = mediaTypes
                     )
                 }
                 applyFilters()
@@ -91,6 +104,11 @@ class LibraryViewModel @Inject constructor(
         applyFilters()
     }
 
+    fun setMediaTypeFilter(mediaType: MediaType?) {
+        _uiState.update { it.copy(selectedMediaType = mediaType) }
+        applyFilters()
+    }
+
     fun toggleReadStatus(book: BookEntity) {
         viewModelScope.launch {
             repository.setReadStatus(book.id, book.userId, !book.isRead)
@@ -107,7 +125,12 @@ class LibraryViewModel @Inject constructor(
         _uiState.update { state ->
             var filtered = state.allBooks
 
-            // Tier 1: Fiction / Non-Fiction
+            // Media type filter
+            state.selectedMediaType?.let { mt ->
+                filtered = filtered.filter { MediaType.fromName(it.mediaType) == mt }
+            }
+
+            // Tier 1: Fiction / Non-Fiction (only meaningful for books)
             filtered = when (state.typeFilter) {
                 TypeFilter.ALL -> filtered
                 TypeFilter.FICTION -> filtered.filter { it.isFiction }
@@ -143,7 +166,34 @@ class LibraryViewModel @Inject constructor(
                 SortOrder.DATE_ADDED_OLDEST -> filtered.sortedBy { it.addedAt }
             }
 
-            state.copy(books = filtered)
+            // Recompute visible genres based on current media type filter
+            val visibleGenres = if (state.selectedMediaType != null) {
+                state.allBooks
+                    .filter { MediaType.fromName(it.mediaType) == state.selectedMediaType }
+                    .flatMap { it.genres }
+                    .filter { it.lowercase() !in Tier1Labels.labels }
+                    .distinct()
+                    .sorted()
+            } else {
+                state.allBooks
+                    .flatMap { it.genres }
+                    .filter { it.lowercase() !in Tier1Labels.labels }
+                    .distinct()
+                    .sorted()
+            }
+
+            // Count reflects the filtered media type, not search/genre
+            val visibleCount = if (state.selectedMediaType != null) {
+                state.allBooks.count { MediaType.fromName(it.mediaType) == state.selectedMediaType }
+            } else {
+                state.allBooks.size
+            }
+
+            state.copy(
+                books = filtered,
+                availableGenres = visibleGenres,
+                bookCount = visibleCount
+            )
         }
     }
 
