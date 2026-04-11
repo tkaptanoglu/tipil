@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
@@ -33,18 +34,19 @@ class ScannerViewModel @Inject constructor(
     private val _scanState = MutableStateFlow<ScanState>(ScanState.Scanning)
     val scanState: StateFlow<ScanState> = _scanState.asStateFlow()
 
-    // AtomicReference prevents race conditions from the camera analyzer thread
     private val lastScannedIsbn = AtomicReference("")
 
+    /**
+     * Atomic lock that prevents duplicate coroutine launches from rapid camera frames.
+     * Only one lookup can be in-flight at a time. The lock is released by [resetScanner].
+     */
+    private val processingLock = AtomicBoolean(false)
+
     fun onBarcodeDetected(isbn: String, userId: String) {
-        // Atomically check-and-set to prevent duplicate lookups from rapid camera frames
-        if (!lastScannedIsbn.compareAndSet("", isbn) &&
-            !(lastScannedIsbn.compareAndSet(isbn, isbn) && _scanState.value is ScanState.Scanning)
-        ) {
-            // Either another ISBN is being processed, or this ISBN is already handled
-            if (lastScannedIsbn.get() == isbn && _scanState.value !is ScanState.Scanning) return
-            if (lastScannedIsbn.get() != isbn) return
-        }
+        // Atomically acquire the processing lock — only the first caller wins.
+        // All subsequent calls (rapid camera frames) are silently dropped.
+        if (!processingLock.compareAndSet(false, true)) return
+
         lastScannedIsbn.set(isbn)
 
         viewModelScope.launch {
@@ -93,6 +95,7 @@ class ScannerViewModel @Inject constructor(
 
     fun resetScanner() {
         lastScannedIsbn.set("")
+        processingLock.set(false)
         _scanState.update { ScanState.Scanning }
     }
 }
