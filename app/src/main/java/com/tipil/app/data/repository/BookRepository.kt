@@ -105,7 +105,7 @@ class BookRepository @Inject constructor(
                         ?.firstOrNull { it.type == "ISBN_13" || it.type == "ISBN_10" }
                         ?.identifier ?: ""
                     if (isbn.isNotEmpty() && isbn !in existingIsbns) {
-                        recommendations.add(item.toRecommendation("Based on your interest in $genre"))
+                        recommendations.add(item.toRecommendation("Based on your interest in $genre", genreClassifier))
                     }
                 }
             } catch (_: Exception) { }
@@ -124,7 +124,7 @@ class BookRepository @Inject constructor(
                         ?.firstOrNull { it.type == "ISBN_13" || it.type == "ISBN_10" }
                         ?.identifier ?: ""
                     if (isbn.isNotEmpty() && isbn !in existingIsbns) {
-                        recommendations.add(item.toRecommendation("More from $author"))
+                        recommendations.add(item.toRecommendation("More from $author", genreClassifier))
                     }
                 }
             } catch (_: Exception) { }
@@ -150,7 +150,7 @@ class BookRepository @Inject constructor(
                         ?.identifier ?: ""
                     isbn.isNotEmpty() && isbn !in existingIsbns
                 }
-                ?.map { it.toRecommendation("Recommended in $genre") }
+                ?.map { it.toRecommendation("Recommended in $genre", genreClassifier) }
                 ?: emptyList()
         } catch (_: Exception) {
             emptyList()
@@ -190,10 +190,14 @@ data class BookRecommendation(
     val coverUrl: String,
     val description: String,
     val reason: String,
-    val isbn: String
+    val isbn: String,
+    val isFiction: Boolean = true
 )
 
-private fun com.tipil.app.data.remote.BookItem.toRecommendation(reason: String): BookRecommendation {
+private fun com.tipil.app.data.remote.BookItem.toRecommendation(
+    reason: String,
+    genreClassifier: GenreClassifier
+): BookRecommendation {
     return BookRecommendation(
         title = volumeInfo.title,
         authors = volumeInfo.authors?.joinToString(", ") ?: "",
@@ -202,6 +206,7 @@ private fun com.tipil.app.data.remote.BookItem.toRecommendation(reason: String):
         reason = reason,
         isbn = volumeInfo.industryIdentifiers
             ?.firstOrNull { it.type == "ISBN_13" || it.type == "ISBN_10" }
-            ?.identifier ?: ""
+            ?.identifier ?: "",
+        isFiction = genreClassifier.isFiction(volumeInfo)
     )
 }

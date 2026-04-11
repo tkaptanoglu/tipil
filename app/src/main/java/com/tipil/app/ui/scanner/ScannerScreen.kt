@@ -1,6 +1,5 @@
 package com.tipil.app.ui.scanner
 
-import android.Manifest
 import android.util.Log
 import com.tipil.app.BuildConfig
 import android.view.ViewGroup
@@ -47,7 +46,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -67,7 +65,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.tipil.app.data.repository.BookLookupResult
-import com.tipil.app.ui.theme.ReadGreen
+import com.tipil.app.ui.theme.LocalExtraColors
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -80,6 +78,7 @@ fun ScannerScreen(
     val scanState by viewModel.scanState.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val extra = LocalExtraColors.current
 
     Scaffold(
         topBar = {
@@ -246,7 +245,7 @@ fun ScannerScreen(
                             Icons.Default.Check,
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
-                            tint = ReadGreen
+                            tint = extra.readIndicator
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -309,10 +308,23 @@ private fun BookPreviewCard(result: BookLookupResult) {
                 if (result.pageCount > 0) {
                     DetailRow("Pages", result.pageCount.toString())
                 }
-                DetailRow("Type", if (result.isFiction) "Fiction" else "Non-fiction")
+                // Tier 1: Fiction / Non-Fiction
+                Spacer(modifier = Modifier.height(8.dp))
+                AssistChip(
+                    onClick = { },
+                    label = {
+                        Text(
+                            if (result.isFiction) "FICTION" else "NON-FICTION",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    modifier = Modifier.height(28.dp)
+                )
 
+                // Tier 2: Genre tags
                 if (result.genres.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         result.genres.forEach { genre ->
                             AssistChip(

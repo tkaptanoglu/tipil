@@ -5,8 +5,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Classifies books into genre tags and fiction/non-fiction based on
- * Google Books API category data and heuristics.
+ * Two-tier classification system:
+ *   Tier 1: Fiction vs Non-Fiction (determined by isFiction())
+ *   Tier 2: Specific genre tags like Sci-Fi, History, Romance, etc. (determined by classify())
+ *
+ * Tier-2 genres never include "Fiction" or "Non-Fiction" — that's tier 1's job.
  */
 @Singleton
 class GenreClassifier @Inject constructor() {
@@ -26,9 +29,8 @@ class GenreClassifier @Inject constructor() {
         "mathematics", "engineering", "medicine", "law"
     )
 
+    // Tier-2 genre map — no "Fiction" or "Non-Fiction" entries
     private val genreMap = mapOf(
-        "fiction" to "Fiction",
-        "literary fiction" to "Literary Fiction",
         "science fiction" to "Sci-Fi",
         "fantasy" to "Fantasy",
         "mystery" to "Mystery",
@@ -77,6 +79,17 @@ class GenreClassifier @Inject constructor() {
         "law" to "Law"
     )
 
+    // Tier-1 labels that must never leak into tier-2 genre lists (lowercase for comparison)
+    private val tier1Labels = setOf(
+        "fiction", "non-fiction", "nonfiction", "non fiction",
+        "literary fiction", "general fiction", "juvenile fiction",
+        "juvenile nonfiction", "juvenile non-fiction"
+    )
+
+    /**
+     * Tier 2: Returns specific genre tags (e.g. Sci-Fi, History, Romance).
+     * Never returns "Fiction" or "Non-Fiction" — that belongs to tier 1.
+     */
     fun classify(volumeInfo: VolumeInfo): List<String> {
         val categories = volumeInfo.categories ?: emptyList()
         val mainCategory = volumeInfo.mainCategory ?: ""
@@ -105,9 +118,15 @@ class GenreClassifier @Inject constructor() {
             }
         }
 
+        // Strip out any tier-1 labels that may have slipped in (case-insensitive)
+        genres.removeAll { it.lowercase() in tier1Labels }
+
         return genres.toList().take(5)
     }
 
+    /**
+     * Tier 1: Determines whether a book is Fiction or Non-Fiction.
+     */
     fun isFiction(volumeInfo: VolumeInfo): Boolean {
         val categories = volumeInfo.categories ?: emptyList()
         val mainCategory = volumeInfo.mainCategory ?: ""

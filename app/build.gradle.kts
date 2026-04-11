@@ -123,6 +123,9 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
 
+    // DataStore
+    implementation(libs.datastore.preferences)
+
     // Coroutines
     implementation(libs.coroutines.android)
     implementation(libs.coroutines.play)

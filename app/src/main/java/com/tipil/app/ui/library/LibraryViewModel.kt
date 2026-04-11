@@ -11,11 +11,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class LibraryFilter { ALL, READ, UNREAD }
+enum class ReadFilter { ALL, READ, UNREAD }
+enum class TypeFilter { ALL, FICTION, NON_FICTION }
 
 data class LibraryUiState(
     val books: List<BookEntity> = emptyList(),
-    val filter: LibraryFilter = LibraryFilter.ALL,
+    val readFilter: ReadFilter = ReadFilter.ALL,
+    val typeFilter: TypeFilter = TypeFilter.ALL,
+    val selectedGenre: String? = null,
+    val availableGenres: List<String> = emptyList(),
     val searchQuery: String = "",
     val isLoading: Boolean = true,
     val bookCount: Int = 0
@@ -32,22 +36,47 @@ class LibraryViewModel @Inject constructor(
     private var allBooks: List<BookEntity> = emptyList()
     private var currentUserId: String = ""
 
+    // Tier-1 labels that should never appear as tier-2 genre tags
+    private val tier1Labels = setOf(
+        "fiction", "non-fiction", "nonfiction", "non fiction",
+        "literary fiction", "general fiction", "juvenile fiction",
+        "juvenile nonfiction", "juvenile non-fiction"
+    )
+
     fun loadBooks(userId: String) {
         currentUserId = userId
         viewModelScope.launch {
             repository.getUserBooks(userId).collect { books ->
                 allBooks = books
+                val genres = books
+                    .flatMap { it.genres }
+                    .filter { it.lowercase() !in tier1Labels }
+                    .distinct()
+                    .sorted()
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    bookCount = books.size
+                    bookCount = books.size,
+                    availableGenres = genres
                 )
                 applyFilters()
             }
         }
     }
 
-    fun setFilter(filter: LibraryFilter) {
-        _uiState.value = _uiState.value.copy(filter = filter)
+    fun setReadFilter(filter: ReadFilter) {
+        _uiState.value = _uiState.value.copy(readFilter = filter)
+        applyFilters()
+    }
+
+    fun setTypeFilter(filter: TypeFilter) {
+        _uiState.value = _uiState.value.copy(typeFilter = filter)
+        applyFilters()
+    }
+
+    fun setGenreFilter(genre: String?) {
+        _uiState.value = _uiState.value.copy(
+            selectedGenre = if (_uiState.value.selectedGenre == genre) null else genre
+        )
         applyFilters()
     }
 
@@ -72,14 +101,26 @@ class LibraryViewModel @Inject constructor(
         val state = _uiState.value
         var filtered = allBooks
 
-        // Apply read/unread filter
-        filtered = when (state.filter) {
-            LibraryFilter.ALL -> filtered
-            LibraryFilter.READ -> filtered.filter { it.isRead }
-            LibraryFilter.UNREAD -> filtered.filter { !it.isRead }
+        // Tier 1: Fiction / Non-Fiction
+        filtered = when (state.typeFilter) {
+            TypeFilter.ALL -> filtered
+            TypeFilter.FICTION -> filtered.filter { it.isFiction }
+            TypeFilter.NON_FICTION -> filtered.filter { !it.isFiction }
         }
 
-        // Apply search filter
+        // Tier 2: Specific genre
+        state.selectedGenre?.let { genre ->
+            filtered = filtered.filter { book -> genre in book.genres }
+        }
+
+        // Read status filter
+        filtered = when (state.readFilter) {
+            ReadFilter.ALL -> filtered
+            ReadFilter.READ -> filtered.filter { it.isRead }
+            ReadFilter.UNREAD -> filtered.filter { !it.isRead }
+        }
+
+        // Search filter
         if (state.searchQuery.isNotBlank()) {
             val query = state.searchQuery.lowercase()
             filtered = filtered.filter { book ->

@@ -1,6 +1,5 @@
 package com.tipil.app.ui.library
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,8 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
@@ -31,6 +30,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
@@ -38,6 +38,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,12 +63,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tipil.app.data.local.BookEntity
-import com.tipil.app.ui.theme.ReadGreen
-import com.tipil.app.ui.theme.UnreadAmber
+import com.tipil.app.ui.theme.LocalExtraColors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -78,6 +79,7 @@ fun LibraryScreen(
     onScanClick: () -> Unit,
     onBookClick: (Long) -> Unit,
     onRecommendationsClick: () -> Unit,
+    onThemeClick: () -> Unit,
     onSignOut: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -107,7 +109,7 @@ fun LibraryScreen(
                         )
                     } else {
                         Column {
-                            Text("My Library", style = MaterialTheme.typography.headlineSmall)
+                            Text("MY LIBRARY", style = MaterialTheme.typography.headlineSmall)
                             Text(
                                 "${uiState.bookCount} books",
                                 style = MaterialTheme.typography.bodySmall,
@@ -129,6 +131,9 @@ fun LibraryScreen(
                     IconButton(onClick = onRecommendationsClick) {
                         Icon(Icons.Default.Star, contentDescription = "Recommendations")
                     }
+                    IconButton(onClick = onThemeClick) {
+                        Icon(Icons.Default.Settings, contentDescription = "Theme")
+                    }
                     IconButton(onClick = onSignOut) {
                         Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Sign out")
                     }
@@ -142,9 +147,9 @@ fun LibraryScreen(
             ExtendedFloatingActionButton(
                 onClick = onScanClick,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("Scan Book") },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
+                text = { Text("SCAN BOOK", style = MaterialTheme.typography.labelLarge) },
+                containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = MaterialTheme.colorScheme.onTertiary
             )
         }
     ) { paddingValues ->
@@ -153,29 +158,78 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Filter chips
+            // ── Tier 1: Fiction / Non-Fiction + Read status ──
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip(
-                    selected = uiState.filter == LibraryFilter.ALL,
-                    onClick = { viewModel.setFilter(LibraryFilter.ALL) },
+                    selected = uiState.typeFilter == TypeFilter.ALL,
+                    onClick = { viewModel.setTypeFilter(TypeFilter.ALL) },
                     label = { Text("All") }
                 )
                 FilterChip(
-                    selected = uiState.filter == LibraryFilter.READ,
-                    onClick = { viewModel.setFilter(LibraryFilter.READ) },
+                    selected = uiState.typeFilter == TypeFilter.FICTION,
+                    onClick = { viewModel.setTypeFilter(TypeFilter.FICTION) },
+                    label = { Text("Fiction") }
+                )
+                FilterChip(
+                    selected = uiState.typeFilter == TypeFilter.NON_FICTION,
+                    onClick = { viewModel.setTypeFilter(TypeFilter.NON_FICTION) },
+                    label = { Text("Non-Fiction") }
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                FilterChip(
+                    selected = uiState.readFilter == ReadFilter.READ,
+                    onClick = {
+                        viewModel.setReadFilter(
+                            if (uiState.readFilter == ReadFilter.READ) ReadFilter.ALL
+                            else ReadFilter.READ
+                        )
+                    },
                     label = { Text("Read") }
                 )
                 FilterChip(
-                    selected = uiState.filter == LibraryFilter.UNREAD,
-                    onClick = { viewModel.setFilter(LibraryFilter.UNREAD) },
+                    selected = uiState.readFilter == ReadFilter.UNREAD,
+                    onClick = {
+                        viewModel.setReadFilter(
+                            if (uiState.readFilter == ReadFilter.UNREAD) ReadFilter.ALL
+                            else ReadFilter.UNREAD
+                        )
+                    },
                     label = { Text("Unread") }
                 )
             }
+
+            // ── Tier 2: Genre tags (scrollable row) ──
+            if (uiState.availableGenres.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(uiState.availableGenres) { genre ->
+                        FilterChip(
+                            selected = uiState.selectedGenre == genre,
+                            onClick = { viewModel.setGenreFilter(genre) },
+                            label = {
+                                Text(genre, style = MaterialTheme.typography.labelSmall)
+                            }
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant
+            )
 
             if (uiState.books.isEmpty() && !uiState.isLoading) {
                 // Empty state
@@ -268,8 +322,9 @@ private fun BookCard(
     onClick: () -> Unit,
     onToggleRead: () -> Unit
 ) {
+    val extra = LocalExtraColors.current
     val readColor by animateColorAsState(
-        targetValue = if (book.isRead) ReadGreen else UnreadAmber,
+        targetValue = if (book.isRead) extra.readIndicator else extra.unreadIndicator,
         label = "readColor"
     )
 
@@ -341,7 +396,24 @@ private fun BookCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Tier 1: Fiction / Non-Fiction badge
+                    AssistChip(
+                        onClick = { },
+                        label = {
+                            Text(
+                                if (book.isFiction) "FICTION" else "NON-FICTION",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (book.isFiction) extra.fictionBadge else extra.nonFictionBadge
+                            )
+                        },
+                        modifier = Modifier.height(28.dp)
+                    )
+
                     // Read status chip
                     AssistChip(
                         onClick = onToggleRead,
@@ -363,7 +435,7 @@ private fun BookCard(
                         modifier = Modifier.height(28.dp)
                     )
 
-                    // Genre chips (show first 2)
+                    // Tier 2: Genre chips (show first 2)
                     book.genres.take(2).forEach { genre ->
                         AssistChip(
                             onClick = { },

@@ -29,6 +29,8 @@ import com.tipil.app.ui.recommendations.RecommendationsScreen
 import com.tipil.app.ui.recommendations.RecommendationsViewModel
 import com.tipil.app.ui.scanner.ScannerScreen
 import com.tipil.app.ui.scanner.ScannerViewModel
+import com.tipil.app.ui.settings.ThemePickerScreen
+import com.tipil.app.ui.theme.ThemeViewModel
 
 object Routes {
     const val SIGN_IN = "sign_in"
@@ -36,12 +38,16 @@ object Routes {
     const val SCANNER = "scanner"
     const val BOOK_DETAIL = "book_detail/{bookId}"
     const val RECOMMENDATIONS = "recommendations"
+    const val THEME_PICKER = "theme_picker"
 
     fun bookDetail(bookId: Long) = "book_detail/$bookId"
 }
 
 @Composable
-fun TipilNavGraph(authViewModel: AuthViewModel) {
+fun TipilNavGraph(
+    authViewModel: AuthViewModel,
+    themeViewModel: ThemeViewModel
+) {
     val navController = rememberNavController()
     val authState by authViewModel.uiState.collectAsState()
 
@@ -71,6 +77,7 @@ fun TipilNavGraph(authViewModel: AuthViewModel) {
                 onScanClick = { navController.navigate(Routes.SCANNER) },
                 onBookClick = { bookId -> navController.navigate(Routes.bookDetail(bookId)) },
                 onRecommendationsClick = { navController.navigate(Routes.RECOMMENDATIONS) },
+                onThemeClick = { navController.navigate(Routes.THEME_PICKER) },
                 onSignOut = {
                     authViewModel.signOut()
                     navController.navigate(Routes.SIGN_IN) {
@@ -130,6 +137,13 @@ fun TipilNavGraph(authViewModel: AuthViewModel) {
             RecommendationsScreen(
                 viewModel = recommendationsViewModel,
                 userId = authState.userId,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.THEME_PICKER) {
+            ThemePickerScreen(
+                themeViewModel = themeViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

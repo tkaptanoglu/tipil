@@ -53,8 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.tipil.app.ui.theme.ReadGreen
-import com.tipil.app.ui.theme.UnreadAmber
+import com.tipil.app.ui.theme.LocalExtraColors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -65,6 +64,7 @@ fun BookDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val extra = LocalExtraColors.current
 
     LaunchedEffect(bookId) {
         viewModel.loadBook(bookId)
@@ -196,7 +196,7 @@ fun BookDetailScreen(
                 onClick = { viewModel.toggleReadStatus() },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (book.isRead) ReadGreen else UnreadAmber
+                    containerColor = if (book.isRead) extra.readIndicator else extra.unreadIndicator
                 )
             ) {
                 Icon(
@@ -228,11 +228,31 @@ fun BookDetailScreen(
                     if (book.editor.isNotBlank()) DetailItem("Editor", book.editor)
                     if (book.publishedYear.isNotBlank()) DetailItem("Year Published", book.publishedYear)
                     if (book.pageCount > 0) DetailItem("Pages", book.pageCount.toString())
-                    DetailItem("Type", if (book.isFiction) "Fiction" else "Non-fiction")
                 }
             }
 
-            // Genre tags
+            // Two-tier tagging
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Tier 1: Fiction / Non-Fiction
+            Text(
+                "Classification",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            AssistChip(
+                onClick = { },
+                label = {
+                    Text(
+                        if (book.isFiction) "FICTION" else "NON-FICTION",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            )
+
+            // Tier 2: Genre tags
             if (book.genres.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(

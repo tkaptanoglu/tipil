@@ -129,7 +129,41 @@ fun RecommendationsScreen(
                 .padding(paddingValues),
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
-            // Genre filter chips
+            // ── Tier 1: Fiction / Non-Fiction browse ──
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Text(
+                        "Browse by Type",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = uiState.typeBrowse == TypeBrowse.ALL,
+                            onClick = { viewModel.setTypeBrowse(TypeBrowse.ALL) },
+                            label = { Text("All") }
+                        )
+                        if (uiState.hasFiction) {
+                            FilterChip(
+                                selected = uiState.typeBrowse == TypeBrowse.FICTION,
+                                onClick = { viewModel.setTypeBrowse(TypeBrowse.FICTION) },
+                                label = { Text("Fiction") }
+                            )
+                        }
+                        if (uiState.hasNonFiction) {
+                            FilterChip(
+                                selected = uiState.typeBrowse == TypeBrowse.NON_FICTION,
+                                onClick = { viewModel.setTypeBrowse(TypeBrowse.NON_FICTION) },
+                                label = { Text("Non-Fiction") }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // ── Tier 2: Genre tag browse ──
             if (uiState.userGenres.isNotEmpty()) {
                 item {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {

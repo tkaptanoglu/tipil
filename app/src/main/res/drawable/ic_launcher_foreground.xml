@@ -4,20 +4,21 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Book icon -->
+    <!-- Book icon in neon purple -->
     <path
-        android:fillColor="#8B5E3C"
+        android:fillColor="#BB86FC"
         android:pathData="M30,30 L30,78 C30,78 34,74 42,74 L78,74 L78,30 L30,30 Z" />
     <path
-        android:fillColor="#FFFFFF"
+        android:fillColor="#1A0A30"
         android:pathData="M42,34 L42,74 C42,74 46,70 54,70 L74,70 L74,34 L42,34 Z" />
+    <!-- Neon text lines -->
     <path
-        android:fillColor="#8B5E3C"
+        android:fillColor="#E040FB"
         android:pathData="M46,42 L70,42 L70,44 L46,44 Z" />
     <path
-        android:fillColor="#8B5E3C"
+        android:fillColor="#BB86FC"
         android:pathData="M46,48 L70,48 L70,50 L46,50 Z" />
     <path
-        android:fillColor="#8B5E3C"
+        android:fillColor="#00E5FF"
         android:pathData="M46,54 L62,54 L62,56 L46,56 Z" />
 </vector>
