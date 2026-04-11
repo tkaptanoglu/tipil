@@ -60,6 +60,7 @@ import com.tipil.app.ui.theme.LocalExtraColors
 fun BookDetailScreen(
     viewModel: BookDetailViewModel,
     bookId: Long,
+    userId: String,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -67,7 +68,7 @@ fun BookDetailScreen(
     val extra = LocalExtraColors.current
 
     LaunchedEffect(bookId) {
-        viewModel.loadBook(bookId)
+        viewModel.loadBook(bookId, userId)
     }
 
     LaunchedEffect(uiState.isDeleted) {

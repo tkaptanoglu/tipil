@@ -79,12 +79,17 @@ class GenreClassifier @Inject constructor() {
         "law" to "Law"
     )
 
-    // Tier-1 labels that must never leak into tier-2 genre lists (lowercase for comparison)
-    private val tier1Labels = setOf(
-        "fiction", "non-fiction", "nonfiction", "non fiction",
-        "literary fiction", "general fiction", "juvenile fiction",
-        "juvenile nonfiction", "juvenile non-fiction"
-    )
+    // Tier-1 labels that must never leak into tier-2 genre lists
+    private val tier1Labels = Tier1Labels.labels
+
+    // Pre-compiled word-boundary regex for each keyword to avoid substring false positives
+    // e.g. "art" must not match "party" or "startup"
+    private val genrePatterns: List<Pair<Regex, String>> = genreMap.map { (keyword, genre) ->
+        Regex("\\b${Regex.escape(keyword)}\\b") to genre
+    }
+
+    private val fictionPatterns: List<Regex> = fictionKeywords.map { Regex("\\b${Regex.escape(it)}\\b") }
+    private val nonFictionPatterns: List<Regex> = nonFictionKeywords.map { Regex("\\b${Regex.escape(it)}\\b") }
 
     /**
      * Tier 2: Returns specific genre tags (e.g. Sci-Fi, History, Romance).
@@ -100,8 +105,8 @@ class GenreClassifier @Inject constructor() {
 
         val genres = mutableSetOf<String>()
 
-        for ((keyword, genre) in genreMap) {
-            if (keyword in allText || keyword in descLower) {
+        for ((pattern, genre) in genrePatterns) {
+            if (pattern.containsMatchIn(allText) || pattern.containsMatchIn(descLower)) {
                 genres.add(genre)
             }
         }
@@ -127,14 +132,22 @@ class GenreClassifier @Inject constructor() {
     /**
      * Tier 1: Determines whether a book is Fiction or Non-Fiction.
      */
+    /**
+     * Tier 1: Determines whether a book is Fiction or Non-Fiction.
+     * When no signal exists (both scores are 0), defaults to Fiction
+     * because Google Books tends to omit categories for fiction more often.
+     */
     fun isFiction(volumeInfo: VolumeInfo): Boolean {
         val categories = volumeInfo.categories ?: emptyList()
         val mainCategory = volumeInfo.mainCategory ?: ""
         val allText = (categories + mainCategory).joinToString(" ").lowercase()
 
-        val fictionScore = fictionKeywords.count { it in allText }
-        val nonFictionScore = nonFictionKeywords.count { it in allText }
+        val fictionScore = fictionPatterns.count { it.containsMatchIn(allText) }
+        val nonFictionScore = nonFictionPatterns.count { it.containsMatchIn(allText) }
 
+        // Strict comparison: non-fiction must score higher to win.
+        // Tie (including 0-0) defaults to fiction, which is the safer assumption
+        // because Google Books leaves fiction categories sparsely tagged.
         return fictionScore >= nonFictionScore
     }
 }

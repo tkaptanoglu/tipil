@@ -20,8 +20,8 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE userId = :userId AND isRead = 0 ORDER BY addedAt DESC")
     fun getUnreadBooks(userId: String): Flow<List<BookEntity>>
 
-    @Query("SELECT * FROM books WHERE id = :bookId")
-    suspend fun getBookById(bookId: Long): BookEntity?
+    @Query("SELECT * FROM books WHERE id = :bookId AND userId = :userId")
+    suspend fun getBookById(bookId: Long, userId: String): BookEntity?
 
     @Query("SELECT * FROM books WHERE userId = :userId AND isbn = :isbn LIMIT 1")
     suspend fun getBookByIsbn(userId: String, isbn: String): BookEntity?
@@ -32,7 +32,7 @@ interface BookDao {
     @Query("SELECT COUNT(*) FROM books WHERE userId = :userId")
     fun getBookCount(userId: String): Flow<Int>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertBook(book: BookEntity): Long
 
     @Update
@@ -41,8 +41,11 @@ interface BookDao {
     @Delete
     suspend fun deleteBook(book: BookEntity)
 
-    @Query("UPDATE books SET isRead = :isRead WHERE id = :bookId")
-    suspend fun setReadStatus(bookId: Long, isRead: Boolean)
+    @Query("UPDATE books SET isRead = :isRead WHERE id = :bookId AND userId = :userId")
+    suspend fun setReadStatus(bookId: Long, userId: String, isRead: Boolean)
+
+    @Query("SELECT * FROM books WHERE userId = :userId")
+    suspend fun getAllBooksByUser(userId: String): List<BookEntity>
 
     @Query("SELECT * FROM books WHERE userId = :userId AND genres LIKE '%' || :genre || '%'")
     suspend fun getBooksByGenre(userId: String, genre: String): List<BookEntity>

@@ -1,11 +1,18 @@
 package com.tipil.app.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 
-@Entity(tableName = "books")
+@Entity(
+    tableName = "books",
+    indices = [
+        Index(value = ["userId"]),
+        Index(value = ["userId", "isbn"], unique = true)
+    ]
+)
 @TypeConverters(StringListConverter::class)
 data class BookEntity(
     @PrimaryKey(autoGenerate = true)
@@ -24,18 +31,18 @@ data class BookEntity(
     val coverUrl: String = "",
     val description: String = "",
     val isRead: Boolean = false,
-    val addedAt: Long = System.currentTimeMillis()
+    val addedAt: Long = 0  // set explicitly at insertion time
 )
 
 class StringListConverter {
     @TypeConverter
-    fun fromString(value: String): List<String> {
+    fun toList(value: String): List<String> {
         if (value.isBlank()) return emptyList()
         return value.split("||")
     }
 
     @TypeConverter
-    fun toString(list: List<String>): String {
+    fun fromList(list: List<String>): String {
         return list.joinToString("||")
     }
 }

@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -25,20 +26,21 @@ class BookDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(BookDetailUiState())
     val uiState: StateFlow<BookDetailUiState> = _uiState.asStateFlow()
 
-    fun loadBook(bookId: Long) {
+    private var currentUserId: String = ""
+
+    fun loadBook(bookId: Long, userId: String) {
+        currentUserId = userId
         viewModelScope.launch {
-            val book = repository.getBookById(bookId)
-            _uiState.value = BookDetailUiState(book = book, isLoading = false)
+            val book = repository.getBookById(bookId, userId)
+            _uiState.update { BookDetailUiState(book = book, isLoading = false) }
         }
     }
 
     fun toggleReadStatus() {
         val book = _uiState.value.book ?: return
         viewModelScope.launch {
-            repository.setReadStatus(book.id, !book.isRead)
-            _uiState.value = _uiState.value.copy(
-                book = book.copy(isRead = !book.isRead)
-            )
+            repository.setReadStatus(book.id, currentUserId, !book.isRead)
+            _uiState.update { it.copy(book = book.copy(isRead = !book.isRead)) }
         }
     }
 
@@ -46,14 +48,7 @@ class BookDetailViewModel @Inject constructor(
         val book = _uiState.value.book ?: return
         viewModelScope.launch {
             repository.deleteBook(book)
-            _uiState.value = _uiState.value.copy(isDeleted = true)
-        }
-    }
-
-    fun updateBook(updatedBook: BookEntity) {
-        viewModelScope.launch {
-            repository.updateBook(updatedBook)
-            _uiState.value = _uiState.value.copy(book = updatedBook)
+            _uiState.update { it.copy(isDeleted = true) }
         }
     }
 }

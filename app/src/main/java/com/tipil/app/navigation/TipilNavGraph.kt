@@ -128,6 +128,7 @@ fun TipilNavGraph(
             BookDetailScreen(
                 viewModel = bookDetailViewModel,
                 bookId = bookId,
+                userId = authState.userId,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

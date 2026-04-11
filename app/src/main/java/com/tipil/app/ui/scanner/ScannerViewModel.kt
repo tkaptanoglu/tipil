@@ -9,7 +9,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
 sealed class ScanState {
@@ -30,54 +32,65 @@ class ScannerViewModel @Inject constructor(
     private val _scanState = MutableStateFlow<ScanState>(ScanState.Scanning)
     val scanState: StateFlow<ScanState> = _scanState.asStateFlow()
 
-    private var lastScannedIsbn: String = ""
+    // AtomicReference prevents race conditions from the camera analyzer thread
+    private val lastScannedIsbn = AtomicReference("")
 
     fun onBarcodeDetected(isbn: String, userId: String) {
-        if (isbn == lastScannedIsbn && _scanState.value !is ScanState.Scanning) return
-        lastScannedIsbn = isbn
+        // Atomically check-and-set to prevent duplicate lookups from rapid camera frames
+        if (!lastScannedIsbn.compareAndSet("", isbn) &&
+            !(lastScannedIsbn.compareAndSet(isbn, isbn) && _scanState.value is ScanState.Scanning)
+        ) {
+            // Either another ISBN is being processed, or this ISBN is already handled
+            if (lastScannedIsbn.get() == isbn && _scanState.value !is ScanState.Scanning) return
+            if (lastScannedIsbn.get() != isbn) return
+        }
+        lastScannedIsbn.set(isbn)
 
         viewModelScope.launch {
-            _scanState.value = ScanState.Looking
+            _scanState.update { ScanState.Looking }
 
             // Check if already in library
             if (repository.isBookInLibrary(userId, isbn)) {
-                _scanState.value = ScanState.AlreadyInLibrary(isbn)
+                _scanState.update { ScanState.AlreadyInLibrary(isbn) }
                 return@launch
             }
 
             val result = repository.lookupBookByIsbn(isbn)
-            _scanState.value = if (result != null) {
-                ScanState.Found(result)
-            } else {
-                ScanState.NotFound(isbn)
+            _scanState.update {
+                if (result != null) ScanState.Found(result) else ScanState.NotFound(isbn)
             }
         }
     }
 
     fun addToLibrary(userId: String, result: BookLookupResult) {
         viewModelScope.launch {
-            val book = BookEntity(
-                userId = userId,
-                isbn = result.isbn,
-                title = result.title,
-                subtitle = result.subtitle,
-                authors = result.authors,
-                publisher = result.publisher,
-                editor = result.editor,
-                publishedYear = result.publishedYear,
-                pageCount = result.pageCount,
-                isFiction = result.isFiction,
-                genres = result.genres,
-                coverUrl = result.coverUrl,
-                description = result.description
-            )
-            repository.addBook(book)
-            _scanState.value = ScanState.Added
+            try {
+                val book = BookEntity(
+                    userId = userId,
+                    isbn = result.isbn,
+                    title = result.title,
+                    subtitle = result.subtitle,
+                    authors = result.authors,
+                    publisher = result.publisher,
+                    editor = result.editor,
+                    publishedYear = result.publishedYear,
+                    pageCount = result.pageCount,
+                    isFiction = result.isFiction,
+                    genres = result.genres,
+                    coverUrl = result.coverUrl,
+                    description = result.description,
+                    addedAt = System.currentTimeMillis()
+                )
+                repository.addBook(book)
+                _scanState.update { ScanState.Added }
+            } catch (e: Exception) {
+                _scanState.update { ScanState.Error("Failed to add book: ${e.message}") }
+            }
         }
     }
 
     fun resetScanner() {
-        lastScannedIsbn = ""
-        _scanState.value = ScanState.Scanning
+        lastScannedIsbn.set("")
+        _scanState.update { ScanState.Scanning }
     }
 }

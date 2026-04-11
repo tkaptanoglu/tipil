@@ -1,5 +1,6 @@
 package com.tipil.app.data.repository
 
+import android.util.Log
 import com.tipil.app.BuildConfig
 import com.tipil.app.data.local.BookDao
 import com.tipil.app.data.local.BookEntity
@@ -9,6 +10,8 @@ import com.tipil.app.util.GenreClassifier
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val TAG = "BookRepository"
 
 @Singleton
 class BookRepository @Inject constructor(
@@ -29,8 +32,8 @@ class BookRepository @Inject constructor(
     fun getBookCount(userId: String): Flow<Int> =
         bookDao.getBookCount(userId)
 
-    suspend fun getBookById(bookId: Long): BookEntity? =
-        bookDao.getBookById(bookId)
+    suspend fun getBookById(bookId: Long, userId: String): BookEntity? =
+        bookDao.getBookById(bookId, userId)
 
     suspend fun addBook(book: BookEntity): Long =
         bookDao.insertBook(book)
@@ -41,8 +44,8 @@ class BookRepository @Inject constructor(
     suspend fun deleteBook(book: BookEntity) =
         bookDao.deleteBook(book)
 
-    suspend fun setReadStatus(bookId: Long, isRead: Boolean) =
-        bookDao.setReadStatus(bookId, isRead)
+    suspend fun setReadStatus(bookId: Long, userId: String, isRead: Boolean) =
+        bookDao.setReadStatus(bookId, userId, isRead)
 
     suspend fun isBookInLibrary(userId: String, isbn: String): Boolean =
         bookDao.getBookByIsbn(userId, isbn) != null
@@ -73,12 +76,13 @@ class BookRepository @Inject constructor(
                 description = info.description ?: ""
             )
         } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "ISBN lookup failed for $isbn", e)
             null
         }
     }
 
     suspend fun getRecommendations(userId: String): List<BookRecommendation> {
-        val userBooks = bookDao.getBooksByGenre(userId, "")
+        val userBooks = bookDao.getAllBooksByUser(userId)
             .takeIf { it.isNotEmpty() } ?: return emptyList()
 
         val allGenres = collectUserGenres(userId)
@@ -108,7 +112,9 @@ class BookRepository @Inject constructor(
                         recommendations.add(item.toRecommendation("Based on your interest in $genre", genreClassifier))
                     }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.w(TAG, "Genre search failed for: $genre", e)
+            }
         }
 
         // Search by favorite authors
@@ -127,14 +133,16 @@ class BookRepository @Inject constructor(
                         recommendations.add(item.toRecommendation("More from $author", genreClassifier))
                     }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.w(TAG, "Author search failed for: $author", e)
+            }
         }
 
         return recommendations.distinctBy { it.title }.take(20)
     }
 
     suspend fun getRecommendationsByGenre(userId: String, genre: String): List<BookRecommendation> {
-        val existingIsbns = bookDao.getBooksByGenre(userId, "")
+        val existingIsbns = bookDao.getAllBooksByUser(userId)
             .map { it.isbn }.toSet()
 
         return try {
@@ -152,7 +160,8 @@ class BookRepository @Inject constructor(
                 }
                 ?.map { it.toRecommendation("Recommended in $genre", genreClassifier) }
                 ?: emptyList()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.w(TAG, "Genre recommendation failed for: $genre", e)
             emptyList()
         }
     }

@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -32,54 +33,56 @@ class AuthViewModel @Inject constructor(
     init {
         // Check if user is already signed in
         firebaseAuth.currentUser?.let { user ->
-            _uiState.value = AuthUiState(
-                isSignedIn = true,
-                userId = user.uid,
-                displayName = user.displayName ?: "",
-                photoUrl = user.photoUrl?.toString() ?: ""
-            )
+            _uiState.update {
+                AuthUiState(
+                    isSignedIn = true,
+                    userId = user.uid,
+                    displayName = user.displayName ?: "",
+                    photoUrl = user.photoUrl?.toString() ?: ""
+                )
+            }
         }
     }
 
     fun signInWithGoogle(idToken: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val credential = GoogleAuthProvider.getCredential(idToken, null)
                 val result = firebaseAuth.signInWithCredential(credential).await()
                 val user = result.user
                 if (user != null) {
-                    _uiState.value = AuthUiState(
-                        isSignedIn = true,
-                        userId = user.uid,
-                        displayName = user.displayName ?: "",
-                        photoUrl = user.photoUrl?.toString() ?: ""
-                    )
+                    _uiState.update {
+                        AuthUiState(
+                            isSignedIn = true,
+                            userId = user.uid,
+                            displayName = user.displayName ?: "",
+                            photoUrl = user.photoUrl?.toString() ?: ""
+                        )
+                    }
                 } else {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "Sign-in failed. Please try again."
-                    )
+                    _uiState.update {
+                        it.copy(isLoading = false, error = "Sign-in failed. Please try again.")
+                    }
                 }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Sign-in failed"
-                )
+                _uiState.update {
+                    it.copy(isLoading = false, error = e.message ?: "Sign-in failed")
+                }
             }
         }
     }
 
     fun signOut() {
         firebaseAuth.signOut()
-        _uiState.value = AuthUiState()
+        _uiState.update { AuthUiState() }
     }
 
     fun onSignInError(message: String) {
-        _uiState.value = _uiState.value.copy(isLoading = false, error = message)
+        _uiState.update { it.copy(isLoading = false, error = message) }
     }
 
     fun clearError() {
-        _uiState.value = _uiState.value.copy(error = null)
+        _uiState.update { it.copy(error = null) }
     }
 }
