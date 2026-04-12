@@ -3,6 +3,7 @@ package com.tipil.app.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaCategory
 import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookRepository
 import com.tipil.app.util.Tier1Labels
@@ -34,10 +35,10 @@ data class LibraryUiState(
     val searchQuery: String = "",
     val isLoading: Boolean = true,
     val bookCount: Int = 0,
-    /** Which media type tab is currently selected. null = show all types. */
-    val selectedMediaType: MediaType? = null,
-    /** Which media types the user actually has items for (drives tab visibility). */
-    val availableMediaTypes: List<MediaType> = emptyList()
+    /** Which category tab is selected. null = show all. */
+    val selectedCategory: MediaCategory? = null,
+    /** Which categories the user has items for (drives tab visibility). */
+    val availableCategories: List<MediaCategory> = emptyList()
 )
 
 @HiltViewModel
@@ -57,9 +58,9 @@ class LibraryViewModel @Inject constructor(
                     .distinct()
                     .sorted()
 
-                // Determine which media types the user has items for
-                val mediaTypes = books
-                    .map { MediaType.fromName(it.mediaType) }
+                // Determine which categories the user has items for
+                val categories = books
+                    .map { MediaType.fromName(it.mediaType).category }
                     .distinct()
                     .sortedBy { it.ordinal }
 
@@ -69,7 +70,7 @@ class LibraryViewModel @Inject constructor(
                         isLoading = false,
                         bookCount = books.size,
                         availableGenres = genres,
-                        availableMediaTypes = mediaTypes
+                        availableCategories = categories
                     )
                 }
                 applyFilters()
@@ -104,8 +105,8 @@ class LibraryViewModel @Inject constructor(
         applyFilters()
     }
 
-    fun setMediaTypeFilter(mediaType: MediaType?) {
-        _uiState.update { it.copy(selectedMediaType = mediaType) }
+    fun setCategoryFilter(category: MediaCategory?) {
+        _uiState.update { it.copy(selectedCategory = category) }
         applyFilters()
     }
 
@@ -125,9 +126,10 @@ class LibraryViewModel @Inject constructor(
         _uiState.update { state ->
             var filtered = state.allBooks
 
-            // Media type filter
-            state.selectedMediaType?.let { mt ->
-                filtered = filtered.filter { MediaType.fromName(it.mediaType) == mt }
+            // Category filter (Books, Music, DVDs, etc.)
+            state.selectedCategory?.let { cat ->
+                val types = cat.mediaTypes
+                filtered = filtered.filter { MediaType.fromName(it.mediaType) in types }
             }
 
             // Tier 1: Fiction / Non-Fiction (only meaningful for books)
@@ -166,28 +168,22 @@ class LibraryViewModel @Inject constructor(
                 SortOrder.DATE_ADDED_OLDEST -> filtered.sortedBy { it.addedAt }
             }
 
-            // Recompute visible genres based on current media type filter
-            val visibleGenres = if (state.selectedMediaType != null) {
-                state.allBooks
-                    .filter { MediaType.fromName(it.mediaType) == state.selectedMediaType }
-                    .flatMap { it.genres }
-                    .filter { it.lowercase() !in Tier1Labels.labels }
-                    .distinct()
-                    .sorted()
+            // Recompute visible genres based on current category filter
+            val categoryItems = if (state.selectedCategory != null) {
+                val types = state.selectedCategory.mediaTypes
+                state.allBooks.filter { MediaType.fromName(it.mediaType) in types }
             } else {
                 state.allBooks
-                    .flatMap { it.genres }
-                    .filter { it.lowercase() !in Tier1Labels.labels }
-                    .distinct()
-                    .sorted()
             }
 
-            // Count reflects the filtered media type, not search/genre
-            val visibleCount = if (state.selectedMediaType != null) {
-                state.allBooks.count { MediaType.fromName(it.mediaType) == state.selectedMediaType }
-            } else {
-                state.allBooks.size
-            }
+            val visibleGenres = categoryItems
+                .flatMap { it.genres }
+                .filter { it.lowercase() !in Tier1Labels.labels }
+                .distinct()
+                .sorted()
+
+            // Count reflects the filtered category, not search/genre
+            val visibleCount = categoryItems.size
 
             state.copy(
                 books = filtered,
@@ -200,16 +196,15 @@ class LibraryViewModel @Inject constructor(
     /**
      * Produces a sort key for the given item, based on its media type.
      *
-     * - **Books / Magazines**: last name of the first author
-     *   (handles "First Last", "First Middle Last", and "Last, First" formats).
-     * - **CDs / Cassettes**: full artist name, with a leading "The " stripped
-     *   (e.g. "The Blues Brothers" sorts under "B", not "T").
+     * - **Books / Magazines**: last name of the first author.
+     * - **Music (CD / Cassette / Vinyl)**: full artist name with leading "The " stripped.
      * - **DVDs / Board Games**: title-based sort.
      */
     internal fun extractSortKey(book: BookEntity): String {
-        return when (MediaType.fromName(book.mediaType)) {
-            MediaType.CD, MediaType.CASSETTE -> extractArtistSortKey(book.authors)
-            MediaType.DVD, MediaType.BOARD_GAME -> book.title.lowercase()
+        val mt = MediaType.fromName(book.mediaType)
+        return when {
+            mt.isMusic -> extractArtistSortKey(book.authors)
+            mt == MediaType.DVD || mt == MediaType.BOARD_GAME -> book.title.lowercase()
             else -> extractLastName(book.authors)
         }
     }

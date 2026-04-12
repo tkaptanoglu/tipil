@@ -1,6 +1,7 @@
 package com.tipil.app.ui.library
 
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaCategory
 import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookRepository
 import io.mockk.every
@@ -63,6 +64,11 @@ class LibraryViewModelMediaTypeTest {
             id = 7, userId = "u", isbn = "007", title = "Abbey Road",
             authors = "The Beatles", isFiction = false, genres = listOf("Rock"),
             mediaType = MediaType.CASSETTE.name, addedAt = 7000
+        ),
+        BookEntity(
+            id = 8, userId = "u", isbn = "008", title = "Dark Side of the Moon",
+            authors = "Pink Floyd", isFiction = false, genres = listOf("Rock"),
+            mediaType = MediaType.VINYL.name, addedAt = 8000
         )
     )
 
@@ -80,111 +86,111 @@ class LibraryViewModelMediaTypeTest {
     }
 
     // ───────────────────────────────────────────────────────────────
-    // Media type tab discovery
+    // Category tab discovery
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `availableMediaTypes contains all types present in library`() = runTest(testDispatcher) {
+    fun `availableCategories contains all categories present in library`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        val types = viewModel.uiState.value.availableMediaTypes
-        assertTrue(types.contains(MediaType.BOOK))
-        assertTrue(types.contains(MediaType.CD))
-        assertTrue(types.contains(MediaType.DVD))
-        assertTrue(types.contains(MediaType.BOARD_GAME))
-        assertTrue(types.contains(MediaType.MAGAZINE))
-        assertTrue(types.contains(MediaType.CASSETTE))
-        assertEquals(6, types.size)
+        val categories = viewModel.uiState.value.availableCategories
+        assertTrue(categories.contains(MediaCategory.BOOKS))
+        assertTrue(categories.contains(MediaCategory.MUSIC))
+        assertTrue(categories.contains(MediaCategory.DVDS))
+        assertTrue(categories.contains(MediaCategory.BOARD_GAMES))
+        assertTrue(categories.contains(MediaCategory.MAGAZINES))
+        assertEquals(5, categories.size)
     }
 
     @Test
-    fun `availableMediaTypes is sorted by enum ordinal`() = runTest(testDispatcher) {
+    fun `availableCategories is sorted by enum ordinal`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        val types = viewModel.uiState.value.availableMediaTypes
-        val ordinals = types.map { it.ordinal }
+        val categories = viewModel.uiState.value.availableCategories
+        val ordinals = categories.map { it.ordinal }
         assertEquals(ordinals.sorted(), ordinals)
     }
 
     // ───────────────────────────────────────────────────────────────
-    // Media type filtering
+    // Category filtering
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `default shows all media types`() = runTest(testDispatcher) {
+    fun `default shows all categories`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        assertNull(viewModel.uiState.value.selectedMediaType)
-        assertEquals(7, viewModel.uiState.value.books.size)
+        assertNull(viewModel.uiState.value.selectedCategory)
+        assertEquals(8, viewModel.uiState.value.books.size)
     }
 
     @Test
-    fun `filter by BOOK shows only books`() = runTest(testDispatcher) {
+    fun `filter by BOOKS shows only books`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.BOOK)
+        viewModel.setCategoryFilter(MediaCategory.BOOKS)
         val books = viewModel.uiState.value.books
         assertEquals(2, books.size)
         assertTrue(books.all { it.mediaType == MediaType.BOOK.name })
     }
 
     @Test
-    fun `filter by CD shows only CDs`() = runTest(testDispatcher) {
+    fun `filter by MUSIC shows CDs, cassettes, and vinyl`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.CD)
+        viewModel.setCategoryFilter(MediaCategory.MUSIC)
         val items = viewModel.uiState.value.books
-        assertEquals(1, items.size)
-        assertEquals("OK Computer", items.first().title)
+        assertEquals(3, items.size)
+        val musicTypes = setOf(MediaType.CD.name, MediaType.CASSETTE.name, MediaType.VINYL.name)
+        assertTrue(items.all { it.mediaType in musicTypes })
     }
 
     @Test
-    fun `filter by DVD shows only DVDs`() = runTest(testDispatcher) {
+    fun `filter by DVDS shows only DVDs`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.DVD)
+        viewModel.setCategoryFilter(MediaCategory.DVDS)
         assertEquals(1, viewModel.uiState.value.books.size)
         assertEquals("Blade Runner", viewModel.uiState.value.books.first().title)
     }
 
     @Test
-    fun `filter by BOARD_GAME shows only board games`() = runTest(testDispatcher) {
+    fun `filter by BOARD_GAMES shows only board games`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.BOARD_GAME)
+        viewModel.setCategoryFilter(MediaCategory.BOARD_GAMES)
         assertEquals(1, viewModel.uiState.value.books.size)
         assertEquals("Catan", viewModel.uiState.value.books.first().title)
     }
 
     @Test
-    fun `clearing media type filter shows all again`() = runTest(testDispatcher) {
+    fun `clearing category filter shows all again`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.BOOK)
+        viewModel.setCategoryFilter(MediaCategory.BOOKS)
         assertEquals(2, viewModel.uiState.value.books.size)
 
-        viewModel.setMediaTypeFilter(null)
-        assertEquals(7, viewModel.uiState.value.books.size)
+        viewModel.setCategoryFilter(null)
+        assertEquals(8, viewModel.uiState.value.books.size)
     }
 
     // ───────────────────────────────────────────────────────────────
-    // Media type + other filters combined
+    // Category + other filters combined
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `media type + fiction filter combined`() = runTest(testDispatcher) {
+    fun `category + fiction filter combined`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.BOOK)
+        viewModel.setCategoryFilter(MediaCategory.BOOKS)
         viewModel.setTypeFilter(TypeFilter.FICTION)
         val books = viewModel.uiState.value.books
         assertEquals(2, books.size) // Dune and Foundation are both fiction books
@@ -192,63 +198,64 @@ class LibraryViewModelMediaTypeTest {
     }
 
     @Test
-    fun `media type + search combined`() = runTest(testDispatcher) {
+    fun `category + search combined`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.BOOK)
+        viewModel.setCategoryFilter(MediaCategory.BOOKS)
         viewModel.setSearchQuery("dune")
         assertEquals(1, viewModel.uiState.value.books.size)
         assertEquals("Dune", viewModel.uiState.value.books.first().title)
     }
 
     @Test
-    fun `media type + sort combined`() = runTest(testDispatcher) {
+    fun `category + sort combined`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.BOOK)
+        viewModel.setCategoryFilter(MediaCategory.BOOKS)
         viewModel.setSortOrder(SortOrder.DATE_ADDED_NEWEST)
         val titles = viewModel.uiState.value.books.map { it.title }
         assertEquals(listOf("Foundation", "Dune"), titles)
     }
 
     // ───────────────────────────────────────────────────────────────
-    // Count and genres update with media type
+    // Count and genres update with category
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `bookCount reflects selected media type`() = runTest(testDispatcher) {
+    fun `bookCount reflects selected category`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        assertEquals(7, viewModel.uiState.value.bookCount)
+        assertEquals(8, viewModel.uiState.value.bookCount)
 
-        viewModel.setMediaTypeFilter(MediaType.BOOK)
+        viewModel.setCategoryFilter(MediaCategory.BOOKS)
         assertEquals(2, viewModel.uiState.value.bookCount)
 
-        viewModel.setMediaTypeFilter(MediaType.CD)
-        assertEquals(1, viewModel.uiState.value.bookCount)
+        viewModel.setCategoryFilter(MediaCategory.MUSIC)
+        assertEquals(3, viewModel.uiState.value.bookCount)
 
-        viewModel.setMediaTypeFilter(null)
-        assertEquals(7, viewModel.uiState.value.bookCount)
+        viewModel.setCategoryFilter(null)
+        assertEquals(8, viewModel.uiState.value.bookCount)
     }
 
     @Test
-    fun `availableGenres reflects selected media type`() = runTest(testDispatcher) {
+    fun `availableGenres reflects selected category`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        viewModel.setMediaTypeFilter(MediaType.BOOK)
+        viewModel.setCategoryFilter(MediaCategory.BOOKS)
         val bookGenres = viewModel.uiState.value.availableGenres
         assertTrue(bookGenres.contains("Sci-Fi"))
         assertFalse(bookGenres.contains("Alternative"))
         assertFalse(bookGenres.contains("Strategy"))
 
-        viewModel.setMediaTypeFilter(MediaType.CD)
-        val cdGenres = viewModel.uiState.value.availableGenres
-        assertTrue(cdGenres.contains("Alternative"))
-        assertFalse(cdGenres.contains("Sci-Fi"))
+        viewModel.setCategoryFilter(MediaCategory.MUSIC)
+        val musicGenres = viewModel.uiState.value.availableGenres
+        assertTrue(musicGenres.contains("Alternative"))
+        assertTrue(musicGenres.contains("Rock"))
+        assertFalse(musicGenres.contains("Sci-Fi"))
     }
 
     // ───────────────────────────────────────────────────────────────
@@ -256,7 +263,7 @@ class LibraryViewModelMediaTypeTest {
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `library with only books shows single media type`() = runTest(testDispatcher) {
+    fun `library with only books shows single category`() = runTest(testDispatcher) {
         val booksOnly = listOf(
             BookEntity(id = 1, userId = "u", isbn = "001", title = "Dune",
                 authors = "Frank Herbert", mediaType = MediaType.BOOK.name, addedAt = 1000)
@@ -267,8 +274,8 @@ class LibraryViewModelMediaTypeTest {
         vm.loadBooks("u")
         advanceUntilIdle()
 
-        assertEquals(1, vm.uiState.value.availableMediaTypes.size)
-        assertEquals(MediaType.BOOK, vm.uiState.value.availableMediaTypes.first())
+        assertEquals(1, vm.uiState.value.availableCategories.size)
+        assertEquals(MediaCategory.BOOKS, vm.uiState.value.availableCategories.first())
     }
 
     @Test

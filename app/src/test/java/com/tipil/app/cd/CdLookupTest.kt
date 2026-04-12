@@ -1,6 +1,7 @@
 package com.tipil.app.cd
 
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaCategory
 import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookLookupResult
 import com.tipil.app.data.repository.BookRepository
@@ -26,7 +27,7 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Tests for CD scanning, lookup, sorting, and media-type-aware behavior.
+ * Tests for CD scanning, lookup, sorting, and category-aware behavior.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CdLookupTest {
@@ -66,15 +67,15 @@ class CdLookupTest {
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `onBarcodeDetected with CD mediaType calls lookupCdByBarcode`() = runTest(testDispatcher) {
+    fun `onBarcodeDetected with CD mediaType calls lookupMusicByBarcode`() = runTest(testDispatcher) {
         coEvery { repository.isBookInLibrary("u", "012345678901") } returns false
-        coEvery { repository.lookupCdByBarcode("012345678901") } returns cdResult
+        coEvery { repository.lookupMusicByBarcode("012345678901", MediaType.CD) } returns cdResult
 
         val vm = ScannerViewModel(repository)
         vm.onBarcodeDetected("012345678901", "u", MediaType.CD)
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.lookupCdByBarcode("012345678901") }
+        coVerify(exactly = 1) { repository.lookupMusicByBarcode("012345678901", MediaType.CD) }
         coVerify(exactly = 0) { repository.lookupBookByIsbn(any()) }
 
         val state = vm.scanState.value
@@ -94,13 +95,49 @@ class CdLookupTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { repository.lookupBookByIsbn("9780062316097") }
-        coVerify(exactly = 0) { repository.lookupCdByBarcode(any()) }
+        coVerify(exactly = 0) { repository.lookupMusicByBarcode(any(), any()) }
+    }
+
+    @Test
+    fun `onBarcodeDetected with VINYL mediaType calls lookupMusicByBarcode`() = runTest(testDispatcher) {
+        val vinylResult = cdResult.copy(mediaType = MediaType.VINYL, isbn = "012345678902")
+        coEvery { repository.isBookInLibrary("u", "012345678902") } returns false
+        coEvery { repository.lookupMusicByBarcode("012345678902", MediaType.VINYL) } returns vinylResult
+
+        val vm = ScannerViewModel(repository)
+        vm.onBarcodeDetected("012345678902", "u", MediaType.VINYL)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.lookupMusicByBarcode("012345678902", MediaType.VINYL) }
+        coVerify(exactly = 0) { repository.lookupBookByIsbn(any()) }
+
+        val state = vm.scanState.value
+        assertTrue(state is ScanState.Found)
+        assertEquals(MediaType.VINYL, (state as ScanState.Found).result.mediaType)
+    }
+
+    @Test
+    fun `onBarcodeDetected with CASSETTE mediaType calls lookupMusicByBarcode`() = runTest(testDispatcher) {
+        val cassetteResult = cdResult.copy(mediaType = MediaType.CASSETTE, isbn = "012345678903")
+        coEvery { repository.isBookInLibrary("u", "012345678903") } returns false
+        coEvery { repository.lookupMusicByBarcode("012345678903", MediaType.CASSETTE) } returns cassetteResult
+
+        val vm = ScannerViewModel(repository)
+        vm.onBarcodeDetected("012345678903", "u", MediaType.CASSETTE)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.lookupMusicByBarcode("012345678903", MediaType.CASSETTE) }
+        coVerify(exactly = 0) { repository.lookupBookByIsbn(any()) }
+
+        val state = vm.scanState.value
+        assertTrue(state is ScanState.Found)
+        assertEquals(MediaType.CASSETTE, (state as ScanState.Found).result.mediaType)
     }
 
     @Test
     fun `CD not found transitions to NotFound state`() = runTest(testDispatcher) {
         coEvery { repository.isBookInLibrary("u", "999999999999") } returns false
-        coEvery { repository.lookupCdByBarcode("999999999999") } returns null
+        coEvery { repository.lookupMusicByBarcode("999999999999", MediaType.CD) } returns null
 
         val vm = ScannerViewModel(repository)
         vm.onBarcodeDetected("999999999999", "u", MediaType.CD)
@@ -141,7 +178,7 @@ class CdLookupTest {
     }
 
     // ───────────────────────────────────────────────────────────────
-    // Sort key: "The" prefix stripping for CDs
+    // Sort key: "The" prefix stripping for music types (CD, Vinyl, Cassette)
     // ───────────────────────────────────────────────────────────────
 
     @Test
@@ -162,7 +199,7 @@ class CdLookupTest {
         vm.loadBooks("u")
         advanceUntilIdle()
 
-        vm.setMediaTypeFilter(MediaType.CD)
+        vm.setCategoryFilter(MediaCategory.MUSIC)
         vm.setSortOrder(SortOrder.AUTHOR_AZ)
         advanceUntilIdle()
 
@@ -173,6 +210,57 @@ class CdLookupTest {
         assertEquals("Beyonce", sorted[1].authors)
         assertEquals("The Blues Brothers", sorted[2].authors)
         assertEquals("Michael Jackson", sorted[3].authors)
+    }
+
+    @Test
+    fun `VINYL sort strips leading The from artist name`() = runTest(testDispatcher) {
+        val vinyls = listOf(
+            BookEntity(id = 1, userId = "u", isbn = "001", title = "Abbey Road",
+                authors = "The Beatles", mediaType = MediaType.VINYL.name, addedAt = 1000),
+            BookEntity(id = 2, userId = "u", isbn = "002", title = "Thriller",
+                authors = "Michael Jackson", mediaType = MediaType.VINYL.name, addedAt = 2000),
+            BookEntity(id = 3, userId = "u", isbn = "003", title = "Lemonade",
+                authors = "Beyonce", mediaType = MediaType.VINYL.name, addedAt = 3000)
+        )
+        every { repository.getUserBooks("u") } returns flowOf(vinyls)
+
+        val vm = LibraryViewModel(repository)
+        vm.loadBooks("u")
+        advanceUntilIdle()
+
+        vm.setCategoryFilter(MediaCategory.MUSIC)
+        vm.setSortOrder(SortOrder.AUTHOR_AZ)
+        advanceUntilIdle()
+
+        val sorted = vm.uiState.value.books
+        // Beatles (B) < Beyonce (B) < Michael Jackson (J)
+        assertEquals("The Beatles", sorted[0].authors)
+        assertEquals("Beyonce", sorted[1].authors)
+        assertEquals("Michael Jackson", sorted[2].authors)
+    }
+
+    @Test
+    fun `CASSETTE sort strips leading The from artist name`() = runTest(testDispatcher) {
+        val cassettes = listOf(
+            BookEntity(id = 1, userId = "u", isbn = "001", title = "A",
+                authors = "The Who", mediaType = MediaType.CASSETTE.name, addedAt = 1000),
+            BookEntity(id = 2, userId = "u", isbn = "002", title = "B",
+                authors = "Adele", mediaType = MediaType.CASSETTE.name, addedAt = 2000)
+        )
+        every { repository.getUserBooks("u") } returns flowOf(cassettes)
+
+        val vm = LibraryViewModel(repository)
+        vm.loadBooks("u")
+        advanceUntilIdle()
+
+        vm.setCategoryFilter(MediaCategory.MUSIC)
+        vm.setSortOrder(SortOrder.AUTHOR_AZ)
+        advanceUntilIdle()
+
+        val sorted = vm.uiState.value.books
+        // Adele (a) < Who (w)
+        assertEquals("Adele", sorted[0].authors)
+        assertEquals("The Who", sorted[1].authors)
     }
 
     @Test
@@ -191,7 +279,7 @@ class CdLookupTest {
         vm.loadBooks("u")
         advanceUntilIdle()
 
-        vm.setMediaTypeFilter(MediaType.CD)
+        vm.setCategoryFilter(MediaCategory.MUSIC)
         vm.setSortOrder(SortOrder.AUTHOR_AZ)
         advanceUntilIdle()
 
@@ -250,15 +338,15 @@ class CdLookupTest {
     }
 
     // ───────────────────────────────────────────────────────────────
-    // Media type filtering for CDs
+    // Category filtering for Music
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `filtering by CD shows only CDs`() = runTest(testDispatcher) {
+    fun `filtering by MUSIC category shows only music types`() = runTest(testDispatcher) {
         val items = listOf(
             BookEntity(id = 1, userId = "u", isbn = "001", title = "Book",
                 authors = "Author", mediaType = MediaType.BOOK.name, addedAt = 1000),
-            BookEntity(id = 2, userId = "u", isbn = "002", title = "CD",
+            BookEntity(id = 2, userId = "u", isbn = "002", title = "CD Album",
                 authors = "Artist", mediaType = MediaType.CD.name, addedAt = 2000)
         )
         every { repository.getUserBooks("u") } returns flowOf(items)
@@ -267,11 +355,72 @@ class CdLookupTest {
         vm.loadBooks("u")
         advanceUntilIdle()
 
-        vm.setMediaTypeFilter(MediaType.CD)
+        vm.setCategoryFilter(MediaCategory.MUSIC)
         val state = vm.uiState.value
         assertEquals(1, state.books.size)
-        assertEquals("CD", state.books[0].title)
-        assertEquals(1, state.bookCount) // count reflects filtered type
+        assertEquals("CD Album", state.books[0].title)
+        assertEquals(1, state.bookCount) // count reflects filtered category
+    }
+
+    @Test
+    fun `MUSIC category filter shows CD, Cassette, and Vinyl together`() = runTest(testDispatcher) {
+        val items = listOf(
+            BookEntity(id = 1, userId = "u", isbn = "001", title = "CD Album",
+                authors = "Artist A", mediaType = MediaType.CD.name, addedAt = 1000),
+            BookEntity(id = 2, userId = "u", isbn = "002", title = "Cassette Album",
+                authors = "Artist B", mediaType = MediaType.CASSETTE.name, addedAt = 2000),
+            BookEntity(id = 3, userId = "u", isbn = "003", title = "Vinyl Album",
+                authors = "Artist C", mediaType = MediaType.VINYL.name, addedAt = 3000),
+            BookEntity(id = 4, userId = "u", isbn = "004", title = "A Book",
+                authors = "Author D", mediaType = MediaType.BOOK.name, addedAt = 4000),
+            BookEntity(id = 5, userId = "u", isbn = "005", title = "A DVD",
+                authors = "Director E", mediaType = MediaType.DVD.name, addedAt = 5000)
+        )
+        every { repository.getUserBooks("u") } returns flowOf(items)
+
+        val vm = LibraryViewModel(repository)
+        vm.loadBooks("u")
+        advanceUntilIdle()
+
+        vm.setCategoryFilter(MediaCategory.MUSIC)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(3, state.books.size)
+        val titles = state.books.map { it.title }.toSet()
+        assertTrue(titles.contains("CD Album"))
+        assertTrue(titles.contains("Cassette Album"))
+        assertTrue(titles.contains("Vinyl Album"))
+        assertFalse(titles.contains("A Book"))
+        assertFalse(titles.contains("A DVD"))
+    }
+
+    @Test
+    fun `same album on multiple formats appears as separate entries`() = runTest(testDispatcher) {
+        val items = listOf(
+            BookEntity(id = 1, userId = "u", isbn = "001", title = "Abbey Road",
+                authors = "The Beatles", mediaType = MediaType.CD.name, addedAt = 1000),
+            BookEntity(id = 2, userId = "u", isbn = "002", title = "Abbey Road",
+                authors = "The Beatles", mediaType = MediaType.VINYL.name, addedAt = 2000),
+            BookEntity(id = 3, userId = "u", isbn = "003", title = "Abbey Road",
+                authors = "The Beatles", mediaType = MediaType.CASSETTE.name, addedAt = 3000)
+        )
+        every { repository.getUserBooks("u") } returns flowOf(items)
+
+        val vm = LibraryViewModel(repository)
+        vm.loadBooks("u")
+        advanceUntilIdle()
+
+        vm.setCategoryFilter(MediaCategory.MUSIC)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(3, state.books.size)
+        // All three are separate entries despite same title/artist
+        val mediaTypes = state.books.map { it.mediaType }.toSet()
+        assertEquals(setOf(MediaType.CD.name, MediaType.VINYL.name, MediaType.CASSETTE.name), mediaTypes)
+        // All have the same title
+        assertTrue(state.books.all { it.title == "Abbey Road" })
     }
 
     // ───────────────────────────────────────────────────────────────
@@ -329,5 +478,23 @@ class CdLookupTest {
             authors = "", mediaType = MediaType.CD.name, addedAt = 1000)
         val key = vm.extractSortKey(entity)
         assertEquals("", key)
+    }
+
+    @Test
+    fun `VINYL extractSortKey strips The same as CD`() {
+        val vm = LibraryViewModel(mockk(relaxed = true))
+        val entity = BookEntity(id = 1, userId = "u", isbn = "001", title = "A",
+            authors = "The Smiths", mediaType = MediaType.VINYL.name, addedAt = 1000)
+        val key = vm.extractSortKey(entity)
+        assertEquals("smiths", key)
+    }
+
+    @Test
+    fun `CASSETTE extractSortKey strips The same as CD`() {
+        val vm = LibraryViewModel(mockk(relaxed = true))
+        val entity = BookEntity(id = 1, userId = "u", isbn = "001", title = "A",
+            authors = "The Cure", mediaType = MediaType.CASSETTE.name, addedAt = 1000)
+        val key = vm.extractSortKey(entity)
+        assertEquals("cure", key)
     }
 }

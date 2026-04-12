@@ -44,8 +44,8 @@ class RecommendationsViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null) }
 
             try {
-                val recommendations = when (mediaType) {
-                    MediaType.CD -> repository.getCdRecommendations(userId)
+                val recommendations = when {
+                    mediaType?.isMusic == true -> repository.getMusicRecommendations(userId)
                     else -> repository.getRecommendations(userId)
                 }
 
@@ -109,8 +109,8 @@ class RecommendationsViewModel @Inject constructor(
             _uiState.update { it.copy(isLoadingGenre = true) }
 
             try {
-                val recommendations = when (mediaType) {
-                    MediaType.CD -> repository.getCdRecommendationsByGenre(userId, genre)
+                val recommendations = when {
+                    mediaType?.isMusic == true -> repository.getMusicRecommendationsByGenre(userId, genre)
                     else -> repository.getRecommendationsByGenre(userId, genre)
                 }
                 _uiState.update { state ->

@@ -103,7 +103,8 @@ fun BookDetailScreen(
     Scaffold(
         topBar = {
             val detailTitle = uiState.book?.let {
-                "${MediaType.fromName(it.mediaType).label} Details"
+                val mt = MediaType.fromName(it.mediaType)
+                if (mt.isMusic) "Album Details" else "${mt.label} Details"
             } ?: "Details"
             TopAppBar(
                 title = { Text(detailTitle) },
@@ -198,11 +199,12 @@ fun BookDetailScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Consumed status toggle — label depends on media type
-            val consumedLabel = when (MediaType.fromName(book.mediaType)) {
-                MediaType.BOOK, MediaType.MAGAZINE -> if (book.isRead) "Marked as Read" else "Mark as Read"
-                MediaType.CD, MediaType.CASSETTE -> if (book.isRead) "Marked as Listened" else "Mark as Listened"
-                MediaType.DVD -> if (book.isRead) "Marked as Watched" else "Mark as Watched"
-                MediaType.BOARD_GAME -> if (book.isRead) "Marked as Played" else "Mark as Played"
+            val mt = MediaType.fromName(book.mediaType)
+            val consumedLabel = when {
+                mt.isMusic -> if (book.isRead) "Marked as Listened" else "Mark as Listened"
+                mt == MediaType.DVD -> if (book.isRead) "Marked as Watched" else "Mark as Watched"
+                mt == MediaType.BOARD_GAME -> if (book.isRead) "Marked as Played" else "Mark as Played"
+                else -> if (book.isRead) "Marked as Read" else "Mark as Read"
             }
             Button(
                 onClick = { viewModel.toggleReadStatus() },
@@ -235,34 +237,44 @@ fun BookDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    if (book.isbn.isNotBlank()) DetailItem("ISBN", book.isbn)
-                    if (book.publisher.isNotBlank()) DetailItem("Publisher", book.publisher)
-                    if (book.editor.isNotBlank()) DetailItem("Editor", book.editor)
-                    if (book.publishedYear.isNotBlank()) DetailItem("Year Published", book.publishedYear)
-                    if (book.pageCount > 0) DetailItem("Pages", book.pageCount.toString())
+                    if (mt.isMusic) {
+                        DetailItem("Format", mt.label)
+                        if (book.isbn.isNotBlank()) DetailItem("Barcode", book.isbn)
+                        if (book.publisher.isNotBlank()) DetailItem("Label", book.publisher)
+                        if (book.publishedYear.isNotBlank()) DetailItem("Year", book.publishedYear)
+                        if (book.pageCount > 0) DetailItem("Tracks", book.pageCount.toString())
+                    } else {
+                        if (book.isbn.isNotBlank()) DetailItem("ISBN", book.isbn)
+                        if (book.publisher.isNotBlank()) DetailItem("Publisher", book.publisher)
+                        if (book.editor.isNotBlank()) DetailItem("Editor", book.editor)
+                        if (book.publishedYear.isNotBlank()) DetailItem("Year Published", book.publishedYear)
+                        if (book.pageCount > 0) DetailItem("Pages", book.pageCount.toString())
+                    }
                 }
             }
 
             // Two-tier tagging
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Tier 1: Fiction / Non-Fiction
-            Text(
-                "Classification",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            AssistChip(
-                onClick = { },
-                label = {
-                    Text(
-                        if (book.isFiction) "FICTION" else "NON-FICTION",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            )
+            // Tier 1: Fiction / Non-Fiction (books only)
+            if (!mt.isMusic) {
+                Text(
+                    "Classification",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                AssistChip(
+                    onClick = { },
+                    label = {
+                        Text(
+                            if (book.isFiction) "FICTION" else "NON-FICTION",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                )
+            }
 
             // Tier 2: Genre tags
             if (book.genres.isNotEmpty()) {

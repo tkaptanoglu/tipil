@@ -92,14 +92,7 @@ fun ScannerScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(when (selectedMediaType) {
-                        MediaType.BOOK -> "Scan Book"
-                        MediaType.CD -> "Scan CD"
-                        MediaType.CASSETTE -> "Scan Cassette"
-                        MediaType.DVD -> "Scan DVD"
-                        MediaType.MAGAZINE -> "Scan Magazine"
-                        MediaType.BOARD_GAME -> "Scan Game"
-                    })
+                    Text(if (selectedMediaType.isMusic) "Scan Album" else "Scan ${selectedMediaType.label}")
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -114,7 +107,7 @@ fun ScannerScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // ── Media type selector (Book / CD) ──
+            // ── Media type selector (Book / CD / Cassette / Vinyl) ──
             // Always visible while scanning so the user can switch what they're scanning.
             if (scanState is ScanState.Scanning || scanState is ScanState.Looking) {
                 Row(
@@ -123,7 +116,7 @@ fun ScannerScreen(
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val scanTypes = listOf(MediaType.BOOK, MediaType.CD)
+                    val scanTypes = listOf(MediaType.BOOK, MediaType.CD, MediaType.CASSETTE, MediaType.VINYL)
                     scanTypes.forEach { type ->
                         FilterChip(
                             selected = selectedMediaType == type,
@@ -167,7 +160,7 @@ fun ScannerScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator()
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(if (selectedMediaType == MediaType.CD) "Looking up CD..." else "Looking up...")
+                                Text(if (selectedMediaType.isMusic) "Looking up album..." else "Looking up...")
                             }
                         }
                     }
@@ -200,11 +193,10 @@ fun ScannerScreen(
                     is ScanState.Scanning -> {
                         Spacer(modifier = Modifier.height(32.dp))
                         Text(
-                            when (selectedMediaType) {
-                                MediaType.BOOK -> "Point your camera at a book's barcode"
-                                MediaType.CD -> "Point your camera at a CD's barcode"
-                                else -> "Point your camera at the barcode"
-                            },
+                            if (selectedMediaType.isMusic)
+                                "Point your camera at the album's barcode"
+                            else
+                                "Point your camera at a ${selectedMediaType.label.lowercase()}'s barcode",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -241,11 +233,10 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            when (selectedMediaType) {
-                                MediaType.BOOK -> "This book is already in your library"
-                                MediaType.CD -> "This CD is already in your library"
-                                else -> "This item is already in your library"
-                            },
+                            if (selectedMediaType.isMusic)
+                                "This ${selectedMediaType.label} is already in your library"
+                            else
+                                "This ${selectedMediaType.label.lowercase()} is already in your library",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -264,11 +255,11 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            if (selectedMediaType == MediaType.CD) "CD not found" else "Item not found",
+                            if (selectedMediaType.isMusic) "Album not found" else "${selectedMediaType.label} not found",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            if (selectedMediaType == MediaType.CD) "Barcode: ${state.isbn}" else "ISBN: ${state.isbn}",
+                            if (selectedMediaType.isMusic) "Barcode: ${state.isbn}" else "ISBN: ${state.isbn}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -301,11 +292,10 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            when (selectedMediaType) {
-                                MediaType.BOOK -> "Book added to your library!"
-                                MediaType.CD -> "CD added to your library!"
-                                else -> "Item added to your library!"
-                            },
+                            if (selectedMediaType.isMusic)
+                                "${selectedMediaType.label} added to your library!"
+                            else
+                                "${selectedMediaType.label} added to your library!",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -355,19 +345,35 @@ private fun BookPreviewCard(result: BookLookupResult) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                val isCd = result.mediaType == MediaType.CD
+                val isMusic = result.mediaType.isMusic
+
+                // Format badge for music items
+                if (isMusic) {
+                    AssistChip(
+                        onClick = { },
+                        label = {
+                            Text(
+                                result.mediaType.label.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        modifier = Modifier.height(28.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
 
                 if (result.publisher.isNotBlank()) {
-                    DetailRow(if (isCd) "Label" else "Publisher", result.publisher)
+                    DetailRow(if (isMusic) "Label" else "Publisher", result.publisher)
                 }
                 if (result.publishedYear.isNotBlank()) {
                     DetailRow("Year", result.publishedYear)
                 }
                 if (result.pageCount > 0) {
-                    DetailRow(if (isCd) "Tracks" else "Pages", result.pageCount.toString())
+                    DetailRow(if (isMusic) "Tracks" else "Pages", result.pageCount.toString())
                 }
                 // Tier 1: Fiction / Non-Fiction (only show for books)
-                if (!isCd) {
+                if (!isMusic) {
                     Spacer(modifier = Modifier.height(8.dp))
                     AssistChip(
                         onClick = { },

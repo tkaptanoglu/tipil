@@ -1,6 +1,7 @@
 package com.tipil.app.security
 
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaCategory
 import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.local.StringListConverter
 import com.tipil.app.data.remote.VolumeInfo
@@ -315,7 +316,7 @@ class InputInjectionSecurityTest {
         assertEquals(2, vm.uiState.value.books.size)
 
         // Filtering by BOOK should include the corrupted one (fallback)
-        vm.setMediaTypeFilter(MediaType.BOOK)
+        vm.setCategoryFilter(MediaCategory.BOOKS)
         assertEquals(2, vm.uiState.value.books.size)
     }
 

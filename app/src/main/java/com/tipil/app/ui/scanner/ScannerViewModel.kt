@@ -58,9 +58,10 @@ class ScannerViewModel @Inject constructor(
                 return@launch
             }
 
-            val result = when (mediaType) {
-                MediaType.CD -> repository.lookupCdByBarcode(isbn)
-                else -> repository.lookupBookByIsbn(isbn)
+            val result = if (mediaType.isMusic) {
+                repository.lookupMusicByBarcode(isbn, mediaType)
+            } else {
+                repository.lookupBookByIsbn(isbn)
             }
             _scanState.update {
                 if (result != null) ScanState.Found(result) else ScanState.NotFound(isbn)

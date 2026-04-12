@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tipil.app.data.local.BookEntity
+import com.tipil.app.data.local.MediaCategory
 import com.tipil.app.data.local.MediaType
 import com.tipil.app.ui.theme.LocalExtraColors
 
@@ -114,14 +115,10 @@ fun LibraryScreen(
                     } else {
                         Column {
                             Text("MY LIBRARY", style = MaterialTheme.typography.headlineSmall)
-                            val countLabel = when (uiState.selectedMediaType) {
-                                null -> "${uiState.bookCount} items"
-                                MediaType.BOOK -> "${uiState.bookCount} books"
-                                MediaType.CD -> "${uiState.bookCount} CDs"
-                                MediaType.CASSETTE -> "${uiState.bookCount} cassettes"
-                                MediaType.DVD -> "${uiState.bookCount} DVDs"
-                                MediaType.MAGAZINE -> "${uiState.bookCount} magazines"
-                                MediaType.BOARD_GAME -> "${uiState.bookCount} board games"
+                            val countLabel = if (uiState.selectedCategory != null) {
+                                "${uiState.bookCount} ${uiState.selectedCategory!!.pluralLabel}"
+                            } else {
+                                "${uiState.bookCount} items"
                             }
                             Text(
                                 countLabel,
@@ -157,13 +154,13 @@ fun LibraryScreen(
             )
         },
         floatingActionButton = {
-            val scanLabel = when (uiState.selectedMediaType) {
-                MediaType.CD -> "SCAN CD"
-                MediaType.CASSETTE -> "SCAN CASSETTE"
-                MediaType.DVD -> "SCAN DVD"
-                MediaType.MAGAZINE -> "SCAN MAGAZINE"
-                MediaType.BOARD_GAME -> "SCAN GAME"
-                else -> "SCAN ITEM"
+            val scanLabel = when (uiState.selectedCategory) {
+                MediaCategory.BOOKS -> "SCAN BOOK"
+                MediaCategory.MUSIC -> "SCAN ALBUM"
+                MediaCategory.DVDS -> "SCAN DVD"
+                MediaCategory.MAGAZINES -> "SCAN MAGAZINE"
+                MediaCategory.BOARD_GAMES -> "SCAN GAME"
+                null -> "SCAN ITEM"
             }
             ExtendedFloatingActionButton(
                 onClick = onScanClick,
@@ -179,8 +176,8 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // ── Media type tabs ──
-            if (uiState.availableMediaTypes.size > 1 || uiState.selectedMediaType != null) {
+            // ── Category tabs (Books, Music, DVDs, …) ──
+            if (uiState.availableCategories.size > 1 || uiState.selectedCategory != null) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -190,16 +187,16 @@ fun LibraryScreen(
                 ) {
                     item {
                         FilterChip(
-                            selected = uiState.selectedMediaType == null,
-                            onClick = { viewModel.setMediaTypeFilter(null) },
+                            selected = uiState.selectedCategory == null,
+                            onClick = { viewModel.setCategoryFilter(null) },
                             label = { Text("All") }
                         )
                     }
-                    items(uiState.availableMediaTypes) { mediaType ->
+                    items(uiState.availableCategories) { category ->
                         FilterChip(
-                            selected = uiState.selectedMediaType == mediaType,
-                            onClick = { viewModel.setMediaTypeFilter(mediaType) },
-                            label = { Text(mediaType.label + "s") }
+                            selected = uiState.selectedCategory == category,
+                            onClick = { viewModel.setCategoryFilter(category) },
+                            label = { Text(category.label) }
                         )
                     }
                 }
@@ -354,8 +351,8 @@ fun LibraryScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    val emptyLabel = if (uiState.selectedMediaType != null)
-                        "No ${uiState.selectedMediaType!!.label.lowercase()}s yet"
+                    val emptyLabel = if (uiState.selectedCategory != null)
+                        "No ${uiState.selectedCategory!!.pluralLabel} yet"
                     else "Your library is empty"
                     Text(
                         emptyLabel,
@@ -524,12 +521,28 @@ private fun BookCard(
                         modifier = Modifier.height(28.dp)
                     )
 
+                    // Format badge for music items (CD / Cassette / Vinyl)
+                    val mt = MediaType.fromName(book.mediaType)
+                    if (mt.isMusic) {
+                        AssistChip(
+                            onClick = { },
+                            label = {
+                                Text(
+                                    mt.label.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+
                     // Consumed status chip — label depends on media type
-                    val consumedText = when (MediaType.fromName(book.mediaType)) {
-                        MediaType.BOOK, MediaType.MAGAZINE -> if (book.isRead) "Read" else "Unread"
-                        MediaType.CD, MediaType.CASSETTE -> if (book.isRead) "Listened" else "Not Listened"
-                        MediaType.DVD -> if (book.isRead) "Watched" else "Not Watched"
-                        MediaType.BOARD_GAME -> if (book.isRead) "Played" else "Not Played"
+                    val consumedText = when {
+                        mt.isMusic -> if (book.isRead) "Listened" else "Not Listened"
+                        mt == MediaType.DVD -> if (book.isRead) "Watched" else "Not Watched"
+                        mt == MediaType.BOARD_GAME -> if (book.isRead) "Played" else "Not Played"
+                        else -> if (book.isRead) "Read" else "Unread"
                     }
                     AssistChip(
                         onClick = onToggleRead,

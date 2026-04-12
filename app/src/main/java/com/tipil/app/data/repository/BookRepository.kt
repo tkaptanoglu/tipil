@@ -94,12 +94,14 @@ class BookRepository @Inject constructor(
     }
 
     /**
-     * Look up a CD by its UPC/EAN barcode via MusicBrainz.
+     * Look up a music item (CD, Cassette, or Vinyl) by its UPC/EAN barcode via MusicBrainz.
      * Two-step process:
      *   1. Search releases by barcode to get release info + release-group ID
      *   2. Lookup the release-group with ?inc=tags to get genre tags
+     *
+     * @param mediaType The specific format (CD, CASSETTE, VINYL) to tag the result with.
      */
-    suspend fun lookupCdByBarcode(barcode: String): BookLookupResult? {
+    suspend fun lookupMusicByBarcode(barcode: String, mediaType: MediaType = MediaType.CD): BookLookupResult? {
         return try {
             // Step 1: Search by barcode
             val searchResponse = musicBrainzApi.searchByBarcode("barcode:$barcode")
@@ -156,26 +158,36 @@ class BookRepository @Inject constructor(
                 genres = genres,
                 coverUrl = coverUrl,
                 description = "",
-                mediaType = MediaType.CD
+                mediaType = mediaType
             )
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.e(TAG, "CD barcode lookup failed for $barcode", e)
+            if (BuildConfig.DEBUG) Log.e(TAG, "Music barcode lookup failed for $barcode", e)
             null
         }
     }
 
     /**
-     * Get CD recommendations based on the user's CD genres and favorite artists.
+     * Get music recommendations based on the user's music library (CDs, cassettes, vinyl).
+     *
+     * Collects genres and artists across ALL music formats. Duplicate albums
+     * (same title+artist on different formats) count as one signal.
      */
-    suspend fun getCdRecommendations(userId: String): List<BookRecommendation> {
-        val userCds = bookDao.getAllBooksByUserAndType(userId, MediaType.CD.name)
-            .takeIf { it.isNotEmpty() } ?: return emptyList()
+    suspend fun getMusicRecommendations(userId: String): List<BookRecommendation> {
+        // Collect all music items across CD, Cassette, Vinyl
+        val allMusic = MediaType.MUSIC_TYPES.flatMap { type ->
+            bookDao.getAllBooksByUserAndType(userId, type.name)
+        }.takeIf { it.isNotEmpty() } ?: return emptyList()
 
-        val existingBarcodes = userCds.map { it.isbn }.toSet()
+        val existingBarcodes = allMusic.map { it.isbn }.toSet()
         val recommendations = mutableListOf<BookRecommendation>()
 
-        // Collect top genres from CDs
-        val topGenres = userCds
+        // Deduplicate by title+artist (case-insensitive) for genre/artist counting
+        val uniqueAlbums = allMusic.distinctBy {
+            (it.title.lowercase() + "||" + it.authors.lowercase())
+        }
+
+        // Collect top genres from unique albums
+        val topGenres = uniqueAlbums
             .flatMap { it.genres }
             .filter { it.isNotBlank() }
             .groupBy { it }
@@ -184,8 +196,8 @@ class BookRepository @Inject constructor(
             .take(3)
             .map { it.key }
 
-        // Collect favorite artists
-        val topArtists = userCds
+        // Collect favorite artists from unique albums
+        val topArtists = uniqueAlbums
             .groupBy { it.authors }
             .entries
             .sortedByDescending { it.value.size }
@@ -215,7 +227,7 @@ class BookRepository @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                if (BuildConfig.DEBUG) Log.w(TAG, "CD genre search failed for: $genre", e)
+                if (BuildConfig.DEBUG) Log.w(TAG, "Music genre search failed for: $genre", e)
             }
         }
 
@@ -242,7 +254,7 @@ class BookRepository @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                if (BuildConfig.DEBUG) Log.w(TAG, "CD artist search failed for: $artist", e)
+                if (BuildConfig.DEBUG) Log.w(TAG, "Music artist search failed for: $artist", e)
             }
         }
 
@@ -250,11 +262,13 @@ class BookRepository @Inject constructor(
     }
 
     /**
-     * Get CD recommendations filtered by a specific genre tag.
+     * Get music recommendations filtered by a specific genre tag.
+     * Checks all music formats to avoid recommending already-owned albums.
      */
-    suspend fun getCdRecommendationsByGenre(userId: String, genre: String): List<BookRecommendation> {
-        val existingBarcodes = bookDao.getAllBooksByUserAndType(userId, MediaType.CD.name)
-            .map { it.isbn }.toSet()
+    suspend fun getMusicRecommendationsByGenre(userId: String, genre: String): List<BookRecommendation> {
+        val existingBarcodes = MediaType.MUSIC_TYPES.flatMap { type ->
+            bookDao.getAllBooksByUserAndType(userId, type.name)
+        }.map { it.isbn }.toSet()
 
         return try {
             val response = musicBrainzApi.searchReleases("tag:${genre.lowercase()}")
@@ -276,7 +290,7 @@ class BookRepository @Inject constructor(
                 }
                 ?: emptyList()
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.w(TAG, "CD genre recommendation failed for: $genre", e)
+            if (BuildConfig.DEBUG) Log.w(TAG, "Music genre recommendation failed for: $genre", e)
             emptyList()
         }
     }

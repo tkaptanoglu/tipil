@@ -6,7 +6,15 @@
       "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-24\" ./gradlew :app:compileDebugUnitTestKotlin)",
       "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-24\" ./gradlew :app:testDebugUnitTest --tests \"com.tipil.app.cd.*\")",
       "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-24\" ./gradlew :app:testDebugUnitTest)",
-      "Bash(find app/build/test-results/testDebugUnitTest -name \"*.xml\" -exec grep -l \"tests=\" {} \\\\;)"
+      "Bash(find app/build/test-results/testDebugUnitTest -name \"*.xml\" -exec grep -l \"tests=\" {} \\\\;)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-24\" ./gradlew :app:compileDebugKotlin)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-24\" ./gradlew --stop)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-24\" ./gradlew :app:compileDebugUnitTestKotlin -Dorg.gradle.jvmargs=\"-Xmx2g\")",
+      "Bash(./gradlew compileDebugUnitTestKotlinAndroid)",
+      "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew compileDebugUnitTestKotlinAndroid)",
+      "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew tasks --all)",
+      "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew :app:compileDebugUnitTestKotlin)",
+      "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew :app:testDebugUnitTest --tests \"com.tipil.app.cd.CdLookupTest\")"
     ]
   }
 }
