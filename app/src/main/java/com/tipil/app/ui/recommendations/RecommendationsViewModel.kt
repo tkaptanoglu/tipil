@@ -2,6 +2,7 @@ package com.tipil.app.ui.recommendations
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookRecommendation
 import com.tipil.app.data.repository.BookRepository
 import com.tipil.app.util.Tier1Labels
@@ -38,12 +39,15 @@ class RecommendationsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(RecommendationsUiState())
     val uiState: StateFlow<RecommendationsUiState> = _uiState.asStateFlow()
 
-    fun loadRecommendations(userId: String) {
+    fun loadRecommendations(userId: String, mediaType: MediaType? = null) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
             try {
-                val recommendations = repository.getRecommendations(userId)
+                val recommendations = when (mediaType) {
+                    MediaType.CD -> repository.getCdRecommendations(userId)
+                    else -> repository.getRecommendations(userId)
+                }
 
                 val books = repository.getUserBooks(userId).first()
 
@@ -90,7 +94,7 @@ class RecommendationsViewModel @Inject constructor(
         }
     }
 
-    fun selectGenre(userId: String, genre: String) {
+    fun selectGenre(userId: String, genre: String, mediaType: MediaType? = null) {
         val currentGenre = _uiState.value.selectedGenre
         if (currentGenre == genre) {
             _uiState.update { it.copy(selectedGenre = null) }
@@ -105,7 +109,10 @@ class RecommendationsViewModel @Inject constructor(
             _uiState.update { it.copy(isLoadingGenre = true) }
 
             try {
-                val recommendations = repository.getRecommendationsByGenre(userId, genre)
+                val recommendations = when (mediaType) {
+                    MediaType.CD -> repository.getCdRecommendationsByGenre(userId, genre)
+                    else -> repository.getRecommendationsByGenre(userId, genre)
+                }
                 _uiState.update { state ->
                     val updatedMap = state.genreRecommendations.toMutableMap()
                     updatedMap[genre] = recommendations

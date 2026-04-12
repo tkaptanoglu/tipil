@@ -6,6 +6,7 @@ import com.tipil.app.data.local.BookDao
 import com.tipil.app.data.local.BookEntity
 import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.remote.GoogleBooksApi
+import com.tipil.app.data.remote.MusicBrainzApi
 import com.tipil.app.data.remote.VolumeInfo
 import com.tipil.app.util.GenreClassifier
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +19,7 @@ private const val TAG = "BookRepository"
 class BookRepository @Inject constructor(
     private val bookDao: BookDao,
     private val googleBooksApi: GoogleBooksApi,
+    private val musicBrainzApi: MusicBrainzApi,
     private val genreClassifier: GenreClassifier
 ) {
 
@@ -88,6 +90,194 @@ class BookRepository @Inject constructor(
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.e(TAG, "ISBN lookup failed for $isbn", e)
             null
+        }
+    }
+
+    /**
+     * Look up a CD by its UPC/EAN barcode via MusicBrainz.
+     * Two-step process:
+     *   1. Search releases by barcode to get release info + release-group ID
+     *   2. Lookup the release-group with ?inc=tags to get genre tags
+     */
+    suspend fun lookupCdByBarcode(barcode: String): BookLookupResult? {
+        return try {
+            // Step 1: Search by barcode
+            val searchResponse = musicBrainzApi.searchByBarcode("barcode:$barcode")
+            val release = searchResponse.releases?.firstOrNull() ?: return null
+
+            // Extract artist name from credits
+            val artist = release.artistCredit
+                ?.joinToString(separator = "") { credit ->
+                    (credit.name) + (credit.joinPhrase ?: "")
+                } ?: ""
+
+            // Extract label
+            val label = release.labelInfo?.firstOrNull()?.label?.name ?: ""
+
+            // Track count from media
+            val trackCount = release.media?.sumOf { it.trackCount } ?: release.trackCount
+
+            // Cover art from Cover Art Archive
+            val coverUrl = "https://coverartarchive.org/release/${release.id}/front-250"
+
+            // Step 2: Get genre tags from release-group
+            val genres = mutableListOf<String>()
+            val releaseGroupId = release.releaseGroup?.id
+            if (!releaseGroupId.isNullOrBlank()) {
+                try {
+                    val rgDetail = musicBrainzApi.getReleaseGroup(releaseGroupId)
+                    genres.addAll(
+                        rgDetail.tags
+                            ?.sortedByDescending { it.count }
+                            ?.take(5)
+                            ?.map { tag ->
+                                // Capitalize each word for display
+                                tag.name.split(" ").joinToString(" ") { word ->
+                                    word.replaceFirstChar { it.uppercase() }
+                                }
+                            }
+                            ?: emptyList()
+                    )
+                } catch (e: Exception) {
+                    if (BuildConfig.DEBUG) Log.w(TAG, "Release-group tag lookup failed", e)
+                }
+            }
+
+            BookLookupResult(
+                isbn = barcode,
+                title = release.title,
+                subtitle = "",
+                authors = artist,            // artist goes in the authors field
+                publisher = label,           // label goes in the publisher field
+                editor = "",
+                publishedYear = release.date?.take(4) ?: "",
+                pageCount = trackCount,      // track count reuses pageCount field
+                isFiction = false,           // not applicable for music
+                genres = genres,
+                coverUrl = coverUrl,
+                description = "",
+                mediaType = MediaType.CD
+            )
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "CD barcode lookup failed for $barcode", e)
+            null
+        }
+    }
+
+    /**
+     * Get CD recommendations based on the user's CD genres and favorite artists.
+     */
+    suspend fun getCdRecommendations(userId: String): List<BookRecommendation> {
+        val userCds = bookDao.getAllBooksByUserAndType(userId, MediaType.CD.name)
+            .takeIf { it.isNotEmpty() } ?: return emptyList()
+
+        val existingBarcodes = userCds.map { it.isbn }.toSet()
+        val recommendations = mutableListOf<BookRecommendation>()
+
+        // Collect top genres from CDs
+        val topGenres = userCds
+            .flatMap { it.genres }
+            .filter { it.isNotBlank() }
+            .groupBy { it }
+            .entries
+            .sortedByDescending { it.value.size }
+            .take(3)
+            .map { it.key }
+
+        // Collect favorite artists
+        val topArtists = userCds
+            .groupBy { it.authors }
+            .entries
+            .sortedByDescending { it.value.size }
+            .take(3)
+            .map { it.key }
+
+        // Search by genre tags
+        for (genre in topGenres) {
+            try {
+                val response = musicBrainzApi.searchReleases("tag:${genre.lowercase()}")
+                response.releases?.forEach { release ->
+                    if (release.id !in existingBarcodes) {
+                        val artist = release.artistCredit
+                            ?.joinToString("") { it.name + (it.joinPhrase ?: "") } ?: ""
+                        recommendations.add(
+                            BookRecommendation(
+                                title = release.title,
+                                authors = artist,
+                                coverUrl = "https://coverartarchive.org/release/${release.id}/front-250",
+                                description = release.releaseGroup?.primaryType ?: "",
+                                reason = "Based on your interest in $genre",
+                                isbn = release.id,
+                                isFiction = false,
+                                mediaType = MediaType.CD
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.w(TAG, "CD genre search failed for: $genre", e)
+            }
+        }
+
+        // Search by artist
+        for (artist in topArtists) {
+            try {
+                val response = musicBrainzApi.searchReleases("artist:\"$artist\"")
+                response.releases?.forEach { release ->
+                    if (release.id !in existingBarcodes) {
+                        val creditArtist = release.artistCredit
+                            ?.joinToString("") { it.name + (it.joinPhrase ?: "") } ?: ""
+                        recommendations.add(
+                            BookRecommendation(
+                                title = release.title,
+                                authors = creditArtist,
+                                coverUrl = "https://coverartarchive.org/release/${release.id}/front-250",
+                                description = release.releaseGroup?.primaryType ?: "",
+                                reason = "More from $artist",
+                                isbn = release.id,
+                                isFiction = false,
+                                mediaType = MediaType.CD
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.w(TAG, "CD artist search failed for: $artist", e)
+            }
+        }
+
+        return recommendations.distinctBy { it.title + it.authors }.take(20)
+    }
+
+    /**
+     * Get CD recommendations filtered by a specific genre tag.
+     */
+    suspend fun getCdRecommendationsByGenre(userId: String, genre: String): List<BookRecommendation> {
+        val existingBarcodes = bookDao.getAllBooksByUserAndType(userId, MediaType.CD.name)
+            .map { it.isbn }.toSet()
+
+        return try {
+            val response = musicBrainzApi.searchReleases("tag:${genre.lowercase()}")
+            response.releases
+                ?.filter { it.id !in existingBarcodes }
+                ?.map { release ->
+                    val artist = release.artistCredit
+                        ?.joinToString("") { it.name + (it.joinPhrase ?: "") } ?: ""
+                    BookRecommendation(
+                        title = release.title,
+                        authors = artist,
+                        coverUrl = "https://coverartarchive.org/release/${release.id}/front-250",
+                        description = release.releaseGroup?.primaryType ?: "",
+                        reason = "Recommended in $genre",
+                        isbn = release.id,
+                        isFiction = false,
+                        mediaType = MediaType.CD
+                    )
+                }
+                ?: emptyList()
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.w(TAG, "CD genre recommendation failed for: $genre", e)
+            emptyList()
         }
     }
 

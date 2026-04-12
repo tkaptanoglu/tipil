@@ -64,8 +64,10 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookLookupResult
 import com.tipil.app.ui.theme.LocalExtraColors
+import com.tipil.app.util.IsbnValidator
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -73,6 +75,7 @@ import java.util.concurrent.Executors
 fun ScannerScreen(
     viewModel: ScannerViewModel,
     userId: String,
+    mediaType: MediaType = MediaType.BOOK,
     onNavigateBack: () -> Unit
 ) {
     val scanState by viewModel.scanState.collectAsState()
@@ -83,7 +86,16 @@ fun ScannerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scan Book") },
+                title = {
+                    Text(when (mediaType) {
+                        MediaType.BOOK -> "Scan Book"
+                        MediaType.CD -> "Scan CD"
+                        MediaType.CASSETTE -> "Scan Cassette"
+                        MediaType.DVD -> "Scan DVD"
+                        MediaType.MAGAZINE -> "Scan Magazine"
+                        MediaType.BOARD_GAME -> "Scan Game"
+                    })
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -107,8 +119,9 @@ fun ScannerScreen(
             ) {
                 if (scanState is ScanState.Scanning || scanState is ScanState.Looking) {
                     CameraPreview(
-                        onBarcodeDetected = { isbn ->
-                            viewModel.onBarcodeDetected(isbn, userId)
+                        mediaType = mediaType,
+                        onBarcodeDetected = { barcode ->
+                            viewModel.onBarcodeDetected(barcode, userId, mediaType)
                         }
                     )
 
@@ -123,7 +136,7 @@ fun ScannerScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator()
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("Looking up book...")
+                                Text(if (mediaType == MediaType.CD) "Looking up CD..." else "Looking up...")
                             }
                         }
                     }
@@ -156,7 +169,11 @@ fun ScannerScreen(
                     is ScanState.Scanning -> {
                         Spacer(modifier = Modifier.height(32.dp))
                         Text(
-                            "Point your camera at a book's barcode",
+                            when (mediaType) {
+                                MediaType.BOOK -> "Point your camera at a book's barcode"
+                                MediaType.CD -> "Point your camera at a CD's barcode"
+                                else -> "Point your camera at the barcode"
+                            },
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -193,7 +210,11 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "This book is already in your library",
+                            when (mediaType) {
+                                MediaType.BOOK -> "This book is already in your library"
+                                MediaType.CD -> "This CD is already in your library"
+                                else -> "This item is already in your library"
+                            },
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -212,11 +233,11 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Book not found",
+                            if (mediaType == MediaType.CD) "CD not found" else "Item not found",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            "ISBN: ${state.isbn}",
+                            if (mediaType == MediaType.CD) "Barcode: ${state.isbn}" else "ISBN: ${state.isbn}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -249,7 +270,11 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Book added to your library!",
+                            when (mediaType) {
+                                MediaType.BOOK -> "Book added to your library!"
+                                MediaType.CD -> "CD added to your library!"
+                                else -> "Item added to your library!"
+                            },
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -299,28 +324,32 @@ private fun BookPreviewCard(result: BookLookupResult) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                val isCd = result.mediaType == MediaType.CD
+
                 if (result.publisher.isNotBlank()) {
-                    DetailRow("Publisher", result.publisher)
+                    DetailRow(if (isCd) "Label" else "Publisher", result.publisher)
                 }
                 if (result.publishedYear.isNotBlank()) {
                     DetailRow("Year", result.publishedYear)
                 }
                 if (result.pageCount > 0) {
-                    DetailRow("Pages", result.pageCount.toString())
+                    DetailRow(if (isCd) "Tracks" else "Pages", result.pageCount.toString())
                 }
-                // Tier 1: Fiction / Non-Fiction
-                Spacer(modifier = Modifier.height(8.dp))
-                AssistChip(
-                    onClick = { },
-                    label = {
-                        Text(
-                            if (result.isFiction) "FICTION" else "NON-FICTION",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
-                    modifier = Modifier.height(28.dp)
-                )
+                // Tier 1: Fiction / Non-Fiction (only show for books)
+                if (!isCd) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AssistChip(
+                        onClick = { },
+                        label = {
+                            Text(
+                                if (result.isFiction) "FICTION" else "NON-FICTION",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        modifier = Modifier.height(28.dp)
+                    )
+                }
 
                 // Tier 2: Genre tags
                 if (result.genres.isNotEmpty()) {
@@ -356,6 +385,7 @@ private fun DetailRow(label: String, value: String) {
 @Composable
 @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 private fun CameraPreview(
+    mediaType: MediaType = MediaType.BOOK,
     onBarcodeDetected: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -408,7 +438,7 @@ private fun CameraPreview(
                             .addOnSuccessListener { barcodes ->
                                 for (barcode in barcodes) {
                                     barcode.rawValue?.let { value ->
-                                        if (isValidIsbn(value)) {
+                                        if (isValidBarcode(value, mediaType)) {
                                             onBarcodeDetected(value)
                                         }
                                     }
@@ -443,26 +473,16 @@ private fun CameraPreview(
     )
 }
 
-private fun isValidIsbn(value: String): Boolean {
+/**
+ * Validates a scanned barcode based on the media type being scanned.
+ * - Books: ISBN-10 or ISBN-13 with checksum validation
+ * - CDs: UPC-A (12 digits), EAN-13 (13 digits), or EAN-8 (8 digits) — all digits required
+ * - Other types: fall back to ISBN validation
+ */
+private fun isValidBarcode(value: String, mediaType: MediaType): Boolean {
     if (!value.all { it.isDigit() }) return false
-    return when (value.length) {
-        13 -> isValidIsbn13(value)
-        10 -> isValidIsbn10(value)
-        else -> false
+    return when (mediaType) {
+        MediaType.CD -> value.length in listOf(8, 12, 13)
+        else -> IsbnValidator.isValid(value)
     }
-}
-
-private fun isValidIsbn13(isbn: String): Boolean {
-    val sum = isbn.mapIndexed { i, c ->
-        val digit = c.digitToInt()
-        if (i % 2 == 0) digit else digit * 3
-    }.sum()
-    return sum % 10 == 0
-}
-
-private fun isValidIsbn10(isbn: String): Boolean {
-    val sum = isbn.mapIndexed { i, c ->
-        c.digitToInt() * (10 - i)
-    }.sum()
-    return sum % 11 == 0
 }

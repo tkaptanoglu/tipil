@@ -42,7 +42,7 @@ class ScannerViewModel @Inject constructor(
      */
     private val processingLock = AtomicBoolean(false)
 
-    fun onBarcodeDetected(isbn: String, userId: String) {
+    fun onBarcodeDetected(isbn: String, userId: String, mediaType: MediaType = MediaType.BOOK) {
         // Atomically acquire the processing lock — only the first caller wins.
         // All subsequent calls (rapid camera frames) are silently dropped.
         if (!processingLock.compareAndSet(false, true)) return
@@ -58,7 +58,10 @@ class ScannerViewModel @Inject constructor(
                 return@launch
             }
 
-            val result = repository.lookupBookByIsbn(isbn)
+            val result = when (mediaType) {
+                MediaType.CD -> repository.lookupCdByBarcode(isbn)
+                else -> repository.lookupBookByIsbn(isbn)
+            }
             _scanState.update {
                 if (result != null) ScanState.Found(result) else ScanState.NotFound(isbn)
             }

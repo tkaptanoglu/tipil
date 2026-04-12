@@ -161,7 +161,7 @@ class LibraryViewModel @Inject constructor(
 
             // Sort
             filtered = when (state.sortOrder) {
-                SortOrder.AUTHOR_AZ -> filtered.sortedBy { extractLastName(it.authors) }
+                SortOrder.AUTHOR_AZ -> filtered.sortedBy { extractSortKey(it) }
                 SortOrder.DATE_ADDED_NEWEST -> filtered.sortedByDescending { it.addedAt }
                 SortOrder.DATE_ADDED_OLDEST -> filtered.sortedBy { it.addedAt }
             }
@@ -195,6 +195,37 @@ class LibraryViewModel @Inject constructor(
                 bookCount = visibleCount
             )
         }
+    }
+
+    /**
+     * Produces a sort key for the given item, based on its media type.
+     *
+     * - **Books / Magazines**: last name of the first author
+     *   (handles "First Last", "First Middle Last", and "Last, First" formats).
+     * - **CDs / Cassettes**: full artist name, with a leading "The " stripped
+     *   (e.g. "The Blues Brothers" sorts under "B", not "T").
+     * - **DVDs / Board Games**: title-based sort.
+     */
+    internal fun extractSortKey(book: BookEntity): String {
+        return when (MediaType.fromName(book.mediaType)) {
+            MediaType.CD, MediaType.CASSETTE -> extractArtistSortKey(book.authors)
+            MediaType.DVD, MediaType.BOARD_GAME -> book.title.lowercase()
+            else -> extractLastName(book.authors)
+        }
+    }
+
+    /**
+     * Strips a leading "The " (case-insensitive) from the artist name for sorting.
+     * "The Blues Brothers" → "blues brothers", "Beyoncé" → "beyoncé".
+     */
+    private fun extractArtistSortKey(artist: String): String {
+        val trimmed = artist.trim()
+        val withoutThe = if (trimmed.startsWith("The ", ignoreCase = true)) {
+            trimmed.drop(4)
+        } else {
+            trimmed
+        }
+        return withoutThe.lowercase()
     }
 
     /**
