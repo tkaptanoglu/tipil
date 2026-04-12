@@ -27,7 +27,6 @@ import com.tipil.app.ui.library.LibraryScreen
 import com.tipil.app.ui.library.LibraryViewModel
 import com.tipil.app.ui.recommendations.RecommendationsScreen
 import com.tipil.app.ui.recommendations.RecommendationsViewModel
-import com.tipil.app.data.local.MediaType
 import com.tipil.app.ui.scanner.ScannerScreen
 import com.tipil.app.ui.scanner.ScannerViewModel
 import com.tipil.app.ui.settings.ThemePickerScreen
@@ -36,12 +35,11 @@ import com.tipil.app.ui.theme.ThemeViewModel
 object Routes {
     const val SIGN_IN = "sign_in"
     const val LIBRARY = "library"
-    const val SCANNER = "scanner/{mediaType}"
+    const val SCANNER = "scanner"
     const val BOOK_DETAIL = "book_detail/{bookId}"
     const val RECOMMENDATIONS = "recommendations"
     const val THEME_PICKER = "theme_picker"
 
-    fun scanner(mediaType: MediaType = MediaType.BOOK) = "scanner/${mediaType.name}"
     fun bookDetail(bookId: Long) = "book_detail/$bookId"
 }
 
@@ -72,15 +70,11 @@ fun TipilNavGraph(
 
         composable(Routes.LIBRARY) {
             val libraryViewModel: LibraryViewModel = hiltViewModel()
-            val libraryState by libraryViewModel.uiState.collectAsState()
             LibraryScreen(
                 viewModel = libraryViewModel,
                 userId = authState.userId,
                 displayName = authState.displayName,
-                onScanClick = {
-                    val mt = libraryState.selectedMediaType ?: MediaType.BOOK
-                    navController.navigate(Routes.scanner(mt))
-                },
+                onScanClick = { navController.navigate(Routes.SCANNER) },
                 onBookClick = { bookId -> navController.navigate(Routes.bookDetail(bookId)) },
                 onRecommendationsClick = { navController.navigate(Routes.RECOMMENDATIONS) },
                 onThemeClick = { navController.navigate(Routes.THEME_PICKER) },
@@ -93,12 +87,7 @@ fun TipilNavGraph(
             )
         }
 
-        composable(
-            route = Routes.SCANNER,
-            arguments = listOf(navArgument("mediaType") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val mediaTypeName = backStackEntry.arguments?.getString("mediaType") ?: MediaType.BOOK.name
-            val mediaType = MediaType.fromName(mediaTypeName)
+        composable(Routes.SCANNER) {
             val scannerViewModel: ScannerViewModel = hiltViewModel()
             val context = LocalContext.current
             var hasCameraPermission by remember {
@@ -125,7 +114,6 @@ fun TipilNavGraph(
                 ScannerScreen(
                     viewModel = scannerViewModel,
                     userId = authState.userId,
-                    mediaType = mediaType,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

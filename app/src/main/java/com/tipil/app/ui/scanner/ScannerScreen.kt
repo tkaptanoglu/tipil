@@ -37,6 +37,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,7 +49,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,19 +78,21 @@ import java.util.concurrent.Executors
 fun ScannerScreen(
     viewModel: ScannerViewModel,
     userId: String,
-    mediaType: MediaType = MediaType.BOOK,
+    initialMediaType: MediaType = MediaType.BOOK,
     onNavigateBack: () -> Unit
 ) {
     val scanState by viewModel.scanState.collectAsState()
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val extra = LocalExtraColors.current
+
+    // The user can switch between Book and CD on the scanner screen itself.
+    // This is local state so it survives recomposition but not navigation.
+    var selectedMediaType by remember { mutableStateOf(initialMediaType) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(when (mediaType) {
+                    Text(when (selectedMediaType) {
                         MediaType.BOOK -> "Scan Book"
                         MediaType.CD -> "Scan CD"
                         MediaType.CASSETTE -> "Scan Cassette"
@@ -109,6 +114,31 @@ fun ScannerScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // ── Media type selector (Book / CD) ──
+            // Always visible while scanning so the user can switch what they're scanning.
+            if (scanState is ScanState.Scanning || scanState is ScanState.Looking) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val scanTypes = listOf(MediaType.BOOK, MediaType.CD)
+                    scanTypes.forEach { type ->
+                        FilterChip(
+                            selected = selectedMediaType == type,
+                            onClick = {
+                                if (selectedMediaType != type) {
+                                    selectedMediaType = type
+                                    viewModel.resetScanner()
+                                }
+                            },
+                            label = { Text(type.label) }
+                        )
+                    }
+                }
+            }
+
             // Camera preview area
             Box(
                 modifier = Modifier
@@ -118,10 +148,11 @@ fun ScannerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 if (scanState is ScanState.Scanning || scanState is ScanState.Looking) {
+                    // The camera accepts ALL valid barcodes (ISBN + UPC/EAN).
+                    // The selectedMediaType determines which API the ViewModel calls.
                     CameraPreview(
-                        mediaType = mediaType,
                         onBarcodeDetected = { barcode ->
-                            viewModel.onBarcodeDetected(barcode, userId, mediaType)
+                            viewModel.onBarcodeDetected(barcode, userId, selectedMediaType)
                         }
                     )
 
@@ -136,7 +167,7 @@ fun ScannerScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator()
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(if (mediaType == MediaType.CD) "Looking up CD..." else "Looking up...")
+                                Text(if (selectedMediaType == MediaType.CD) "Looking up CD..." else "Looking up...")
                             }
                         }
                     }
@@ -169,7 +200,7 @@ fun ScannerScreen(
                     is ScanState.Scanning -> {
                         Spacer(modifier = Modifier.height(32.dp))
                         Text(
-                            when (mediaType) {
+                            when (selectedMediaType) {
                                 MediaType.BOOK -> "Point your camera at a book's barcode"
                                 MediaType.CD -> "Point your camera at a CD's barcode"
                                 else -> "Point your camera at the barcode"
@@ -210,7 +241,7 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            when (mediaType) {
+                            when (selectedMediaType) {
                                 MediaType.BOOK -> "This book is already in your library"
                                 MediaType.CD -> "This CD is already in your library"
                                 else -> "This item is already in your library"
@@ -233,11 +264,11 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            if (mediaType == MediaType.CD) "CD not found" else "Item not found",
+                            if (selectedMediaType == MediaType.CD) "CD not found" else "Item not found",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            if (mediaType == MediaType.CD) "Barcode: ${state.isbn}" else "ISBN: ${state.isbn}",
+                            if (selectedMediaType == MediaType.CD) "Barcode: ${state.isbn}" else "ISBN: ${state.isbn}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -270,7 +301,7 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            when (mediaType) {
+                            when (selectedMediaType) {
                                 MediaType.BOOK -> "Book added to your library!"
                                 MediaType.CD -> "CD added to your library!"
                                 else -> "Item added to your library!"
@@ -385,7 +416,6 @@ private fun DetailRow(label: String, value: String) {
 @Composable
 @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 private fun CameraPreview(
-    mediaType: MediaType = MediaType.BOOK,
     onBarcodeDetected: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -438,7 +468,7 @@ private fun CameraPreview(
                             .addOnSuccessListener { barcodes ->
                                 for (barcode in barcodes) {
                                     barcode.rawValue?.let { value ->
-                                        if (isValidBarcode(value, mediaType)) {
+                                        if (isValidBarcode(value)) {
                                             onBarcodeDetected(value)
                                         }
                                     }
@@ -474,15 +504,16 @@ private fun CameraPreview(
 }
 
 /**
- * Validates a scanned barcode based on the media type being scanned.
- * - Books: ISBN-10 or ISBN-13 with checksum validation
- * - CDs: UPC-A (12 digits), EAN-13 (13 digits), or EAN-8 (8 digits) — all digits required
- * - Other types: fall back to ISBN validation
+ * Accepts any barcode that ML Kit decoded successfully and looks like a
+ * product barcode: all digits, length 8 / 10 / 12 / 13.
+ *
+ * The media-type-specific validation (ISBN checksum for books, UPC/EAN for
+ * CDs) is intentionally NOT done here. ML Kit already validated the barcode
+ * format; further filtering here would silently drop valid CDs or books.
+ * The ViewModel routes to the correct API based on the user's selected
+ * media type.
  */
-private fun isValidBarcode(value: String, mediaType: MediaType): Boolean {
+private fun isValidBarcode(value: String): Boolean {
     if (!value.all { it.isDigit() }) return false
-    return when (mediaType) {
-        MediaType.CD -> value.length in listOf(8, 12, 13)
-        else -> IsbnValidator.isValid(value)
-    }
+    return value.length in listOf(8, 10, 12, 13)
 }
