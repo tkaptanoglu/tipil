@@ -7,6 +7,7 @@ import com.tipil.app.data.local.BookEntity
 import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.remote.GoogleBooksApi
 import com.tipil.app.data.remote.MusicBrainzApi
+import com.tipil.app.data.remote.OpenLibraryApi
 import com.tipil.app.data.remote.VolumeInfo
 import com.tipil.app.util.GenreClassifier
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +21,7 @@ class BookRepository @Inject constructor(
     private val bookDao: BookDao,
     private val googleBooksApi: GoogleBooksApi,
     private val musicBrainzApi: MusicBrainzApi,
+    private val openLibraryApi: OpenLibraryApi,
     private val genreClassifier: GenreClassifier
 ) {
 
@@ -63,6 +65,18 @@ class BookRepository @Inject constructor(
         bookDao.getBookByIsbn(userId, isbn) != null
 
     suspend fun lookupBookByIsbn(isbn: String): BookLookupResult? {
+        // Try Google Books first
+        val googleResult = lookupViaGoogleBooks(isbn)
+        if (googleResult != null) return googleResult
+
+        // Fallback: Open Library
+        val olResult = lookupViaOpenLibrary(isbn)
+        if (olResult != null) return olResult
+
+        return null
+    }
+
+    private suspend fun lookupViaGoogleBooks(isbn: String): BookLookupResult? {
         return try {
             val response = googleBooksApi.searchByIsbn(
                 query = "isbn:$isbn",
@@ -88,8 +102,85 @@ class BookRepository @Inject constructor(
                 description = info.description ?: ""
             )
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.e(TAG, "ISBN lookup failed for $isbn", e)
+            if (BuildConfig.DEBUG) Log.e(TAG, "Google Books lookup failed for $isbn", e)
             null
+        }
+    }
+
+    private suspend fun lookupViaOpenLibrary(isbn: String): BookLookupResult? {
+        return try {
+            val edition = openLibraryApi.getByIsbn(isbn)
+
+            // Resolve author names from author keys
+            val authorNames = edition.authors?.mapNotNull { ref ->
+                try {
+                    val author = openLibraryApi.getAuthor(ref.key)
+                    author.name.ifBlank { author.personalName }
+                } catch (e: Exception) {
+                    null
+                }
+            } ?: emptyList()
+
+            // Get subjects/description from the work if available
+            var subjects = edition.subjects ?: emptyList()
+            var description = extractDescription(edition.description)
+            val workKey = edition.works?.firstOrNull()?.key
+            if (workKey != null) {
+                try {
+                    val work = openLibraryApi.getWork(workKey)
+                    if (subjects.isEmpty()) subjects = work.subjects ?: emptyList()
+                    if (description.isBlank()) description = extractDescription(work.description)
+                } catch (e: Exception) {
+                    if (BuildConfig.DEBUG) Log.w(TAG, "Open Library work lookup failed", e)
+                }
+            }
+
+            // Map subjects to genres (take top 5, capitalize)
+            val genres = subjects
+                .take(5)
+                .map { it.replaceFirstChar { c -> c.uppercase() } }
+
+            // Determine fiction status from subjects
+            val subjectsLower = subjects.map { it.lowercase() }
+            val isFiction = subjectsLower.any { it.contains("fiction") }
+                    && !subjectsLower.any { it.contains("non-fiction") || it.contains("nonfiction") }
+
+            // Build cover URL from cover ID
+            val coverId = edition.covers?.firstOrNull()
+            val coverUrl = if (coverId != null && coverId > 0) {
+                "https://covers.openlibrary.org/b/id/$coverId-M.jpg"
+            } else ""
+
+            val resolvedIsbn = edition.isbn13?.firstOrNull()
+                ?: edition.isbn10?.firstOrNull()
+                ?: isbn
+
+            BookLookupResult(
+                isbn = resolvedIsbn,
+                title = edition.title,
+                subtitle = edition.subtitle ?: "",
+                authors = authorNames.joinToString(", "),
+                publisher = edition.publishers?.firstOrNull() ?: "",
+                editor = "",
+                publishedYear = edition.publishDate?.takeLast(4)?.takeIf { it.all { c -> c.isDigit() } } ?: "",
+                pageCount = edition.numberOfPages ?: 0,
+                isFiction = isFiction,
+                genres = genres,
+                coverUrl = coverUrl,
+                description = description
+            )
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "Open Library lookup failed for $isbn", e)
+            null
+        }
+    }
+
+    /** Open Library description can be a String or a Map with "value" key. */
+    private fun extractDescription(desc: Any?): String {
+        return when (desc) {
+            is String -> desc
+            is Map<*, *> -> desc["value"]?.toString() ?: ""
+            else -> ""
         }
     }
 
@@ -103,9 +194,18 @@ class BookRepository @Inject constructor(
      */
     suspend fun lookupMusicByBarcode(barcode: String, mediaType: MediaType = MediaType.CD): BookLookupResult? {
         return try {
-            // Step 1: Search by barcode
-            val searchResponse = musicBrainzApi.searchByBarcode("barcode:$barcode")
-            val release = searchResponse.releases?.firstOrNull() ?: return null
+            // Step 1: Search by barcode — try exact barcode query first
+            var searchResponse = musicBrainzApi.searchByBarcode("barcode:$barcode")
+            var release = searchResponse.releases?.firstOrNull()
+
+            // Fallback: try without the "barcode:" prefix (free-text search)
+            // Many cassettes and older media have inconsistent barcode registrations
+            if (release == null) {
+                searchResponse = musicBrainzApi.searchByBarcode(barcode)
+                release = searchResponse.releases?.firstOrNull()
+            }
+
+            if (release == null) return null
 
             // Extract artist name from credits
             val artist = release.artistCredit

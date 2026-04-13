@@ -76,12 +76,18 @@ class StressTest {
         vm.setTypeFilter(TypeFilter.FICTION)
         assertEquals(5_000, vm.uiState.value.books.size)
 
-        // Filter read
-        vm.setReadFilter(ReadFilter.READ)
-        assertEquals(2_500, vm.uiState.value.books.size)
+        // Filter by genre
+        vm.setGenreFilter("Sci-Fi")
+        // Sci-Fi is every 3rd book, fiction is every 2nd; overlap is every 6th = 1666
+        val sciFiFiction = (1..10_000).count { it % 2 == 0 && it % 3 == 0 }
+        assertEquals(sciFiFiction, vm.uiState.value.books.size)
+
+        // Reset genre filter
+        vm.setGenreFilter("Sci-Fi") // toggle off
 
         // Sort by date
         vm.setSortOrder(SortOrder.DATE_ADDED_NEWEST)
+        vm.setTypeFilter(TypeFilter.ALL) // reset fiction filter
         assertTrue(vm.uiState.value.books.first().addedAt > vm.uiState.value.books.last().addedAt)
     }
 

@@ -117,29 +117,8 @@ class LibraryViewModelTest {
         assertEquals(listOf("The Great Gatsby", "Dune", "Sapiens", "Foundation"), titles)
     }
 
-    // ───────────────────────────────────────────────────────────────
-    // Read filter
-    // ───────────────────────────────────────────────────────────────
-
-    @Test
-    fun `read filter shows only read books`() = runTest(testDispatcher) {
-        viewModel.loadBooks("user1")
-        advanceUntilIdle()
-        viewModel.setReadFilter(ReadFilter.READ)
-        val books = viewModel.uiState.value.books
-        assertEquals(2, books.size)
-        assertTrue(books.all { it.isRead })
-    }
-
-    @Test
-    fun `unread filter shows only unread books`() = runTest(testDispatcher) {
-        viewModel.loadBooks("user1")
-        advanceUntilIdle()
-        viewModel.setReadFilter(ReadFilter.UNREAD)
-        val books = viewModel.uiState.value.books
-        assertEquals(2, books.size)
-        assertTrue(books.none { it.isRead })
-    }
+    // Read filter was removed (Bug 5) — users can still toggle read status
+    // on individual items, but there is no filter in the library view.
 
     // ───────────────────────────────────────────────────────────────
     // Type filter
@@ -236,14 +215,14 @@ class LibraryViewModelTest {
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `fiction + read filter combined`() = runTest(testDispatcher) {
+    fun `fiction + search filter combined`() = runTest(testDispatcher) {
         viewModel.loadBooks("user1")
         advanceUntilIdle()
         viewModel.setTypeFilter(TypeFilter.FICTION)
-        viewModel.setReadFilter(ReadFilter.READ)
+        viewModel.setSearchQuery("dune")
         val books = viewModel.uiState.value.books
-        assertEquals(2, books.size) // Dune (read, fiction) and Gatsby (read, fiction)
-        assertTrue(books.all { it.isFiction && it.isRead })
+        assertEquals(1, books.size)
+        assertEquals("Dune", books.first().title)
     }
 
     // ───────────────────────────────────────────────────────────────

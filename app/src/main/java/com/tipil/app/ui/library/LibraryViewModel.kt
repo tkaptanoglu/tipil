@@ -35,8 +35,8 @@ data class LibraryUiState(
     val searchQuery: String = "",
     val isLoading: Boolean = true,
     val bookCount: Int = 0,
-    /** Which category tab is selected. null = show all. */
-    val selectedCategory: MediaCategory? = null,
+    /** Which category tab is selected. Always non-null; defaults to BOOKS. */
+    val selectedCategory: MediaCategory = MediaCategory.BOOKS,
     /** Which categories the user has items for (drives tab visibility). */
     val availableCategories: List<MediaCategory> = emptyList()
 )
@@ -65,12 +65,19 @@ class LibraryViewModel @Inject constructor(
                     .sortedBy { it.ordinal }
 
                 _uiState.update {
+                    // If the current selection is not in the available categories,
+                    // default to the first available (or BOOKS as ultimate fallback).
+                    val currentCat = it.selectedCategory
+                    val effectiveCat = if (currentCat in categories) currentCat
+                        else categories.firstOrNull() ?: MediaCategory.BOOKS
+
                     it.copy(
                         allBooks = books,
                         isLoading = false,
                         bookCount = books.size,
                         availableGenres = genres,
-                        availableCategories = categories
+                        availableCategories = categories,
+                        selectedCategory = effectiveCat
                     )
                 }
                 applyFilters()
@@ -105,8 +112,8 @@ class LibraryViewModel @Inject constructor(
         applyFilters()
     }
 
-    fun setCategoryFilter(category: MediaCategory?) {
-        _uiState.update { it.copy(selectedCategory = category) }
+    fun setCategoryFilter(category: MediaCategory) {
+        _uiState.update { it.copy(selectedCategory = category, typeFilter = TypeFilter.ALL, selectedGenre = null) }
         applyFilters()
     }
 
@@ -126,29 +133,22 @@ class LibraryViewModel @Inject constructor(
         _uiState.update { state ->
             var filtered = state.allBooks
 
-            // Category filter (Books, Music, DVDs, etc.)
-            state.selectedCategory?.let { cat ->
-                val types = cat.mediaTypes
-                filtered = filtered.filter { MediaType.fromName(it.mediaType) in types }
-            }
+            // Category filter (Books, Music, DVDs, etc.) — always applied
+            val types = state.selectedCategory.mediaTypes
+            filtered = filtered.filter { MediaType.fromName(it.mediaType) in types }
 
-            // Tier 1: Fiction / Non-Fiction (only meaningful for books)
-            filtered = when (state.typeFilter) {
-                TypeFilter.ALL -> filtered
-                TypeFilter.FICTION -> filtered.filter { it.isFiction }
-                TypeFilter.NON_FICTION -> filtered.filter { !it.isFiction }
+            // Tier 1: Fiction / Non-Fiction (only meaningful for books, not music)
+            if (state.selectedCategory == MediaCategory.BOOKS) {
+                filtered = when (state.typeFilter) {
+                    TypeFilter.ALL -> filtered
+                    TypeFilter.FICTION -> filtered.filter { it.isFiction }
+                    TypeFilter.NON_FICTION -> filtered.filter { !it.isFiction }
+                }
             }
 
             // Tier 2: Specific genre
             state.selectedGenre?.let { genre ->
                 filtered = filtered.filter { book -> genre in book.genres }
-            }
-
-            // Read status filter
-            filtered = when (state.readFilter) {
-                ReadFilter.ALL -> filtered
-                ReadFilter.READ -> filtered.filter { it.isRead }
-                ReadFilter.UNREAD -> filtered.filter { !it.isRead }
             }
 
             // Search filter
@@ -168,13 +168,8 @@ class LibraryViewModel @Inject constructor(
                 SortOrder.DATE_ADDED_OLDEST -> filtered.sortedBy { it.addedAt }
             }
 
-            // Recompute visible genres based on current category filter
-            val categoryItems = if (state.selectedCategory != null) {
-                val types = state.selectedCategory.mediaTypes
-                state.allBooks.filter { MediaType.fromName(it.mediaType) in types }
-            } else {
-                state.allBooks
-            }
+            // Recompute visible genres scoped to the active category
+            val categoryItems = state.allBooks.filter { MediaType.fromName(it.mediaType) in types }
 
             val visibleGenres = categoryItems
                 .flatMap { it.genres }

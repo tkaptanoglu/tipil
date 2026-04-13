@@ -14,7 +14,15 @@
       "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew compileDebugUnitTestKotlinAndroid)",
       "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew tasks --all)",
       "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew :app:compileDebugUnitTestKotlin)",
-      "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew :app:testDebugUnitTest --tests \"com.tipil.app.cd.CdLookupTest\")"
+      "Bash(JAVA_HOME='/c/Program Files/Java/jdk-17' ./gradlew :app:testDebugUnitTest --tests \"com.tipil.app.cd.CdLookupTest\")",
+      "Bash(./gradlew compileDebugKotlin)",
+      "Bash(set \"JAVA_HOME=C:\\\\Program Files\\\\Java\\\\jdk-24\")",
+      "Bash(gradlew.bat compileDebugKotlin)",
+      "Bash(ls gradlew*)",
+      "Bash(JAVA_HOME=\"C:\\\\Program Files\\\\Java\\\\jdk-24\" ./gradlew compileDebugKotlin)",
+      "Bash(JAVA_HOME=\"C:\\\\Program Files\\\\Java\\\\jdk-24\" ./gradlew testDebugUnitTest)",
+      "Bash(JAVA_HOME=\"C:\\\\Program Files\\\\Java\\\\jdk-24\" ./gradlew testDebugUnitTest --info)",
+      "Bash(grep -E \"tests completed|Test result|tests$\")"
     ]
   }
 }

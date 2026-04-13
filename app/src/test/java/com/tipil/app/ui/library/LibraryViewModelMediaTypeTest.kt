@@ -118,12 +118,13 @@ class LibraryViewModelMediaTypeTest {
     // ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `default shows all categories`() = runTest(testDispatcher) {
+    fun `default shows first available category`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        assertNull(viewModel.uiState.value.selectedCategory)
-        assertEquals(8, viewModel.uiState.value.books.size)
+        // Default is the first available category (BOOKS, since it has lowest ordinal)
+        assertEquals(MediaCategory.BOOKS, viewModel.uiState.value.selectedCategory)
+        assertEquals(2, viewModel.uiState.value.books.size)
     }
 
     @Test
@@ -170,15 +171,15 @@ class LibraryViewModelMediaTypeTest {
     }
 
     @Test
-    fun `clearing category filter shows all again`() = runTest(testDispatcher) {
+    fun `switching category filter changes visible items`() = runTest(testDispatcher) {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
         viewModel.setCategoryFilter(MediaCategory.BOOKS)
         assertEquals(2, viewModel.uiState.value.books.size)
 
-        viewModel.setCategoryFilter(null)
-        assertEquals(8, viewModel.uiState.value.books.size)
+        viewModel.setCategoryFilter(MediaCategory.MUSIC)
+        assertEquals(3, viewModel.uiState.value.books.size)
     }
 
     // ───────────────────────────────────────────────────────────────
@@ -228,7 +229,8 @@ class LibraryViewModelMediaTypeTest {
         viewModel.loadBooks("u")
         advanceUntilIdle()
 
-        assertEquals(8, viewModel.uiState.value.bookCount)
+        // Default is BOOKS
+        assertEquals(2, viewModel.uiState.value.bookCount)
 
         viewModel.setCategoryFilter(MediaCategory.BOOKS)
         assertEquals(2, viewModel.uiState.value.bookCount)
@@ -236,8 +238,8 @@ class LibraryViewModelMediaTypeTest {
         viewModel.setCategoryFilter(MediaCategory.MUSIC)
         assertEquals(3, viewModel.uiState.value.bookCount)
 
-        viewModel.setCategoryFilter(null)
-        assertEquals(8, viewModel.uiState.value.bookCount)
+        viewModel.setCategoryFilter(MediaCategory.DVDS)
+        assertEquals(1, viewModel.uiState.value.bookCount)
     }
 
     @Test

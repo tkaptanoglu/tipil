@@ -26,7 +26,6 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -46,14 +45,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -83,7 +79,7 @@ fun LibraryScreen(
     displayName: String,
     onScanClick: () -> Unit,
     onBookClick: (Long) -> Unit,
-    onRecommendationsClick: () -> Unit,
+    onRecommendationsClick: (MediaCategory) -> Unit,
     onThemeClick: () -> Unit,
     onSignOut: () -> Unit
 ) {
@@ -115,11 +111,7 @@ fun LibraryScreen(
                     } else {
                         Column {
                             Text("MY LIBRARY", style = MaterialTheme.typography.headlineSmall)
-                            val countLabel = if (uiState.selectedCategory != null) {
-                                "${uiState.bookCount} ${uiState.selectedCategory!!.pluralLabel}"
-                            } else {
-                                "${uiState.bookCount} items"
-                            }
+                            val countLabel = "${uiState.bookCount} ${uiState.selectedCategory.pluralLabel}"
                             Text(
                                 countLabel,
                                 style = MaterialTheme.typography.bodySmall,
@@ -138,7 +130,7 @@ fun LibraryScreen(
                             contentDescription = if (showSearch) "Close search" else "Search"
                         )
                     }
-                    IconButton(onClick = onRecommendationsClick) {
+                    IconButton(onClick = { onRecommendationsClick(uiState.selectedCategory) }) {
                         Icon(Icons.Default.Star, contentDescription = "Recommendations")
                     }
                     IconButton(onClick = onThemeClick) {
@@ -160,7 +152,6 @@ fun LibraryScreen(
                 MediaCategory.DVDS -> "SCAN DVD"
                 MediaCategory.MAGAZINES -> "SCAN MAGAZINE"
                 MediaCategory.BOARD_GAMES -> "SCAN GAME"
-                null -> "SCAN ITEM"
             }
             ExtendedFloatingActionButton(
                 onClick = onScanClick,
@@ -177,7 +168,7 @@ fun LibraryScreen(
                 .padding(paddingValues)
         ) {
             // ── Category tabs (Books, Music, DVDs, …) ──
-            if (uiState.availableCategories.size > 1 || uiState.selectedCategory != null) {
+            if (uiState.availableCategories.size > 1) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -185,13 +176,6 @@ fun LibraryScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    item {
-                        FilterChip(
-                            selected = uiState.selectedCategory == null,
-                            onClick = { viewModel.setCategoryFilter(null) },
-                            label = { Text("All") }
-                        )
-                    }
                     items(uiState.availableCategories) { category ->
                         FilterChip(
                             selected = uiState.selectedCategory == category,
@@ -207,51 +191,30 @@ fun LibraryScreen(
                 )
             }
 
-            // ── Tier 1: Fiction / Non-Fiction + Read status ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = uiState.typeFilter == TypeFilter.ALL,
-                    onClick = { viewModel.setTypeFilter(TypeFilter.ALL) },
-                    label = { Text("All") }
-                )
-                FilterChip(
-                    selected = uiState.typeFilter == TypeFilter.FICTION,
-                    onClick = { viewModel.setTypeFilter(TypeFilter.FICTION) },
-                    label = { Text("Fiction") }
-                )
-                FilterChip(
-                    selected = uiState.typeFilter == TypeFilter.NON_FICTION,
-                    onClick = { viewModel.setTypeFilter(TypeFilter.NON_FICTION) },
-                    label = { Text("Non-Fiction") }
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                FilterChip(
-                    selected = uiState.readFilter == ReadFilter.READ,
-                    onClick = {
-                        viewModel.setReadFilter(
-                            if (uiState.readFilter == ReadFilter.READ) ReadFilter.ALL
-                            else ReadFilter.READ
-                        )
-                    },
-                    label = { Text("Read") }
-                )
-                FilterChip(
-                    selected = uiState.readFilter == ReadFilter.UNREAD,
-                    onClick = {
-                        viewModel.setReadFilter(
-                            if (uiState.readFilter == ReadFilter.UNREAD) ReadFilter.ALL
-                            else ReadFilter.UNREAD
-                        )
-                    },
-                    label = { Text("Unread") }
-                )
+            // ── Tier 1: Fiction / Non-Fiction (books only) ──
+            if (uiState.selectedCategory == MediaCategory.BOOKS) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = uiState.typeFilter == TypeFilter.ALL,
+                        onClick = { viewModel.setTypeFilter(TypeFilter.ALL) },
+                        label = { Text("All") }
+                    )
+                    FilterChip(
+                        selected = uiState.typeFilter == TypeFilter.FICTION,
+                        onClick = { viewModel.setTypeFilter(TypeFilter.FICTION) },
+                        label = { Text("Fiction") }
+                    )
+                    FilterChip(
+                        selected = uiState.typeFilter == TypeFilter.NON_FICTION,
+                        onClick = { viewModel.setTypeFilter(TypeFilter.NON_FICTION) },
+                        label = { Text("Non-Fiction") }
+                    )
+                }
             }
 
             // ── Tier 2: Genre tags (scrollable row) ──
@@ -351,9 +314,7 @@ fun LibraryScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    val emptyLabel = if (uiState.selectedCategory != null)
-                        "No ${uiState.selectedCategory!!.pluralLabel} yet"
-                    else "Your library is empty"
+                    val emptyLabel = "No ${uiState.selectedCategory.pluralLabel} yet"
                     Text(
                         emptyLabel,
                         style = MaterialTheme.typography.headlineSmall,
@@ -375,43 +336,11 @@ fun LibraryScreen(
                         items = uiState.books,
                         key = { it.id }
                     ) { book ->
-                        val dismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { value ->
-                                if (value == SwipeToDismissBoxValue.EndToStart) {
-                                    viewModel.deleteBook(book)
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
+                        BookCard(
+                            book = book,
+                            onClick = { onBookClick(book.id) },
+                            onToggleRead = { viewModel.toggleReadStatus(book) }
                         )
-
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            backgroundContent = {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.error)
-                                        .padding(horizontal = 20.dp),
-                                    contentAlignment = Alignment.CenterEnd
-                                ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = "Delete",
-                                        tint = MaterialTheme.colorScheme.onError
-                                    )
-                                }
-                            },
-                            enableDismissFromStartToEnd = false
-                        ) {
-                            BookCard(
-                                book = book,
-                                onClick = { onBookClick(book.id) },
-                                onToggleRead = { viewModel.toggleReadStatus(book) }
-                            )
-                        }
                     }
 
                     // Bottom spacing for FAB
@@ -507,22 +436,25 @@ private fun BookCard(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    // Tier 1: Fiction / Non-Fiction badge
-                    AssistChip(
-                        onClick = { },
-                        label = {
-                            Text(
-                                if (book.isFiction) "FICTION" else "NON-FICTION",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (book.isFiction) extra.fictionBadge else extra.nonFictionBadge
-                            )
-                        },
-                        modifier = Modifier.height(28.dp)
-                    )
+                    val mt = MediaType.fromName(book.mediaType)
+
+                    // Tier 1: Fiction / Non-Fiction badge (books only, not music)
+                    if (!mt.isMusic) {
+                        AssistChip(
+                            onClick = { },
+                            label = {
+                                Text(
+                                    if (book.isFiction) "FICTION" else "NON-FICTION",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (book.isFiction) extra.fictionBadge else extra.nonFictionBadge
+                                )
+                            },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
 
                     // Format badge for music items (CD / Cassette / Vinyl)
-                    val mt = MediaType.fromName(book.mediaType)
                     if (mt.isMusic) {
                         AssistChip(
                             onClick = { },

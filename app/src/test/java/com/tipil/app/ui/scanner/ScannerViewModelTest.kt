@@ -58,16 +58,17 @@ class ScannerViewModelTest {
     }
 
     @Test
-    fun `onBarcodeDetected transitions to Found when book exists in API`() = runTest(testDispatcher) {
+    fun `onBarcodeDetected auto-adds to library when book exists in API`() = runTest(testDispatcher) {
         coEvery { repository.isBookInLibrary("user1", "9780062316097") } returns false
         coEvery { repository.lookupBookByIsbn("9780062316097") } returns testResult
+        coEvery { repository.addBook(any()) } returns 1L
 
         viewModel.onBarcodeDetected("9780062316097", "user1")
         advanceUntilIdle()
 
         val state = viewModel.scanState.value
-        assertTrue("Expected Found, got $state", state is ScanState.Found)
-        assertEquals("Sapiens", (state as ScanState.Found).result.title)
+        assertTrue("Expected Added, got $state", state is ScanState.Added)
+        coVerify { repository.addBook(match { it.title == "Sapiens" }) }
     }
 
     @Test

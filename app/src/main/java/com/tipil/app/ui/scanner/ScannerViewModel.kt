@@ -63,8 +63,33 @@ class ScannerViewModel @Inject constructor(
             } else {
                 repository.lookupBookByIsbn(isbn)
             }
-            _scanState.update {
-                if (result != null) ScanState.Found(result) else ScanState.NotFound(isbn)
+            if (result != null) {
+                // Auto-add to library without confirmation
+                try {
+                    val book = BookEntity(
+                        userId = userId,
+                        isbn = result.isbn,
+                        title = result.title,
+                        subtitle = result.subtitle,
+                        authors = result.authors,
+                        publisher = result.publisher,
+                        editor = result.editor,
+                        publishedYear = result.publishedYear,
+                        pageCount = result.pageCount,
+                        isFiction = result.isFiction,
+                        genres = result.genres,
+                        coverUrl = result.coverUrl,
+                        description = result.description,
+                        addedAt = System.currentTimeMillis(),
+                        mediaType = result.mediaType.name
+                    )
+                    repository.addBook(book)
+                    _scanState.update { ScanState.Added }
+                } catch (e: Exception) {
+                    _scanState.update { ScanState.Error("Failed to add: ${e.message}") }
+                }
+            } else {
+                _scanState.update { ScanState.NotFound(isbn) }
             }
         }
     }

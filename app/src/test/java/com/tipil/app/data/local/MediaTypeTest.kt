@@ -24,9 +24,9 @@ class MediaTypeTest {
 
     @Test
     fun `fromName falls back to BOOK for unknown name`() {
-        assertEquals(MediaType.BOOK, MediaType.fromName("VINYL"))
         assertEquals(MediaType.BOOK, MediaType.fromName(""))
         assertEquals(MediaType.BOOK, MediaType.fromName("unknown"))
+        assertEquals(MediaType.BOOK, MediaType.fromName("FLOPPY_DISK"))
     }
 
     @Test

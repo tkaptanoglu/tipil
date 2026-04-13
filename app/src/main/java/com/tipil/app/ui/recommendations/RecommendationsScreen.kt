@@ -44,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.tipil.app.data.local.MediaCategory
+import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookRecommendation
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,18 +53,24 @@ import com.tipil.app.data.repository.BookRecommendation
 fun RecommendationsScreen(
     viewModel: RecommendationsViewModel,
     userId: String,
+    category: MediaCategory = MediaCategory.BOOKS,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isMusic = category == MediaCategory.MUSIC
 
-    LaunchedEffect(userId) {
-        viewModel.loadRecommendations(userId)
+    LaunchedEffect(userId, category) {
+        if (isMusic) {
+            viewModel.loadRecommendations(userId, MediaType.CD)
+        } else {
+            viewModel.loadRecommendations(userId)
+        }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Recommendations") },
+                title = { Text(if (isMusic) "Music Recommendations" else "Book Recommendations") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -82,7 +90,8 @@ fun RecommendationsScreen(
                     CircularProgressIndicator()
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "Finding books you might like...",
+                        if (isMusic) "Finding albums you might like..."
+                        else "Finding books you might like...",
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -109,12 +118,14 @@ fun RecommendationsScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "Add more books to get recommendations",
+                        if (isMusic) "Add more albums to get recommendations"
+                        else "Add more books to get recommendations",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "We need to know your taste first! Add books to your library and we'll suggest new reads.",
+                        if (isMusic) "We need to know your taste first! Add albums to your library and we'll suggest new listens."
+                        else "We need to know your taste first! Add books to your library and we'll suggest new reads.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -129,38 +140,40 @@ fun RecommendationsScreen(
                 .padding(paddingValues),
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
-            // ── Tier 1: Fiction / Non-Fiction browse ──
-            item {
-                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Text(
-                        "Browse by Type",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = uiState.typeBrowse == TypeBrowse.ALL,
-                            onClick = { viewModel.setTypeBrowse(TypeBrowse.ALL) },
-                            label = { Text("All") }
+            // ── Tier 1: Fiction / Non-Fiction browse (books only) ──
+            if (!isMusic) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        Text(
+                            "Browse by Type",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
-                        if (uiState.hasFiction) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
-                                selected = uiState.typeBrowse == TypeBrowse.FICTION,
-                                onClick = { viewModel.setTypeBrowse(TypeBrowse.FICTION) },
-                                label = { Text("Fiction") }
+                                selected = uiState.typeBrowse == TypeBrowse.ALL,
+                                onClick = { viewModel.setTypeBrowse(TypeBrowse.ALL) },
+                                label = { Text("All") }
                             )
-                        }
-                        if (uiState.hasNonFiction) {
-                            FilterChip(
-                                selected = uiState.typeBrowse == TypeBrowse.NON_FICTION,
-                                onClick = { viewModel.setTypeBrowse(TypeBrowse.NON_FICTION) },
-                                label = { Text("Non-Fiction") }
-                            )
+                            if (uiState.hasFiction) {
+                                FilterChip(
+                                    selected = uiState.typeBrowse == TypeBrowse.FICTION,
+                                    onClick = { viewModel.setTypeBrowse(TypeBrowse.FICTION) },
+                                    label = { Text("Fiction") }
+                                )
+                            }
+                            if (uiState.hasNonFiction) {
+                                FilterChip(
+                                    selected = uiState.typeBrowse == TypeBrowse.NON_FICTION,
+                                    onClick = { viewModel.setTypeBrowse(TypeBrowse.NON_FICTION) },
+                                    label = { Text("Non-Fiction") }
+                                )
+                            }
                         }
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
-                Spacer(modifier = Modifier.height(16.dp))
             }
 
             // ── Tier 2: Genre tag browse ──
@@ -177,7 +190,12 @@ fun RecommendationsScreen(
                             items(uiState.userGenres) { genre ->
                                 FilterChip(
                                     selected = uiState.selectedGenre == genre,
-                                    onClick = { viewModel.selectGenre(userId, genre) },
+                                    onClick = {
+                                        viewModel.selectGenre(
+                                            userId, genre,
+                                            if (isMusic) MediaType.CD else null
+                                        )
+                                    },
                                     label = { Text(genre) }
                                 )
                             }

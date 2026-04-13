@@ -77,6 +77,7 @@ class RaceConditionSecurityTest {
         coEvery { repository.lookupBookByIsbn("9780000000002") } returns testResult.copy(
             isbn = "9780000000002", title = "Other Book"
         )
+        coEvery { repository.addBook(any()) } returns 1L
 
         val vm = ScannerViewModel(repository)
 
@@ -90,9 +91,9 @@ class RaceConditionSecurityTest {
         coVerify(exactly = 1) { repository.lookupBookByIsbn("9780062316097") }
         coVerify(exactly = 0) { repository.lookupBookByIsbn("9780000000002") }
 
+        // Auto-add means it goes straight to Added
         val state = vm.scanState.value
-        assertTrue(state is ScanState.Found)
-        assertEquals("Sapiens", (state as ScanState.Found).result.title)
+        assertTrue(state is ScanState.Added)
     }
 
     // ───────────────────────────────────────────────────────────────
@@ -145,6 +146,7 @@ class RaceConditionSecurityTest {
     fun `resetScanner during active lookup does not crash`() = runTest(testDispatcher) {
         coEvery { repository.isBookInLibrary("u", any()) } returns false
         coEvery { repository.lookupBookByIsbn(any()) } returns testResult
+        coEvery { repository.addBook(any()) } returns 1L
 
         val vm = ScannerViewModel(repository)
         vm.onBarcodeDetected("9780062316097", "u")
@@ -153,12 +155,12 @@ class RaceConditionSecurityTest {
         vm.resetScanner()
         advanceUntilIdle()
 
-        // State should be Scanning (reset) or Found (lookup completed after reset)
+        // State should be Scanning (reset) or Added (auto-add completed after reset)
         // Either is acceptable; crash is not
         val state = vm.scanState.value
         assertTrue(
-            "State should be Scanning or Found, was $state",
-            state is ScanState.Scanning || state is ScanState.Found
+            "State should be Scanning or Added, was $state",
+            state is ScanState.Scanning || state is ScanState.Added
         )
     }
 
@@ -170,6 +172,7 @@ class RaceConditionSecurityTest {
     fun `rapid scan-reset cycles do not corrupt state`() = runTest(testDispatcher) {
         coEvery { repository.isBookInLibrary("u", any()) } returns false
         coEvery { repository.lookupBookByIsbn(any()) } returns testResult
+        coEvery { repository.addBook(any()) } returns 1L
 
         val vm = ScannerViewModel(repository)
 
@@ -179,12 +182,12 @@ class RaceConditionSecurityTest {
         }
         advanceUntilIdle()
 
-        // Final state may be Scanning (reset won last) or Found (lookup completed)
+        // Final state may be Scanning (reset won last) or Added (auto-add completed)
         // Either is acceptable — no crash, no corruption
         val state = vm.scanState.value
         assertTrue(
             "State should be stable, was $state",
-            state is ScanState.Scanning || state is ScanState.Found
+            state is ScanState.Scanning || state is ScanState.Added
         )
     }
 }

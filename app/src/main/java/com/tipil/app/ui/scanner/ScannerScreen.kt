@@ -205,22 +205,11 @@ fun ScannerScreen(
                     is ScanState.Looking -> { /* Handled in camera overlay */ }
 
                     is ScanState.Found -> {
+                        // Auto-add is handled by the ViewModel; this state is
+                        // only transiently visible if the add hasn't completed yet.
                         BookPreviewCard(result = state.result)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = { viewModel.addToLibrary(userId, state.result) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Done, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Add to Library")
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.resetScanner() },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Scan Another")
-                        }
+                        CircularProgressIndicator()
                     }
 
                     is ScanState.AlreadyInLibrary -> {

@@ -70,11 +70,7 @@ class P1ScenarioTest {
 
         scannerVM.onBarcodeDetected("9780062316097", "user1")
         advanceUntilIdle()
-        assertTrue(scannerVM.scanState.value is ScanState.Found)
-
-        // Step 2: Add
-        scannerVM.addToLibrary("user1", testLookup)
-        advanceUntilIdle()
+        // Auto-add: goes directly to Added
         assertTrue(scannerVM.scanState.value is ScanState.Added)
 
         // Step 3: Verify in library
@@ -188,19 +184,21 @@ class P1ScenarioTest {
         coEvery { repository.isBookInLibrary(any(), any()) } returns false
         coEvery { repository.lookupBookByIsbn("9780062316097") } returns testLookup
         coEvery { repository.lookupBookByIsbn("9780000000002") } returns result2
+        coEvery { repository.addBook(any()) } returns 1L
 
         val vm = ScannerViewModel(repository)
 
         vm.onBarcodeDetected("9780062316097", "user1")
         advanceUntilIdle()
-        assertEquals("Sapiens", (vm.scanState.value as ScanState.Found).result.title)
+        // Auto-add: goes directly to Added
+        assertTrue(vm.scanState.value is ScanState.Added)
 
         vm.resetScanner()
         assertTrue(vm.scanState.value is ScanState.Scanning)
 
         vm.onBarcodeDetected("9780000000002", "user1")
         advanceUntilIdle()
-        assertEquals("Dune", (vm.scanState.value as ScanState.Found).result.title)
+        assertTrue(vm.scanState.value is ScanState.Added)
     }
 
     // ───────────────────────────────────────────────────────────────

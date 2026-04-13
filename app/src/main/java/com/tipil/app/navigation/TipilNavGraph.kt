@@ -19,6 +19,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.tipil.app.data.local.MediaCategory
 import com.tipil.app.ui.auth.AuthViewModel
 import com.tipil.app.ui.auth.SignInScreen
 import com.tipil.app.ui.bookdetail.BookDetailScreen
@@ -37,10 +38,11 @@ object Routes {
     const val LIBRARY = "library"
     const val SCANNER = "scanner"
     const val BOOK_DETAIL = "book_detail/{bookId}"
-    const val RECOMMENDATIONS = "recommendations"
+    const val RECOMMENDATIONS = "recommendations/{category}"
     const val THEME_PICKER = "theme_picker"
 
     fun bookDetail(bookId: Long) = "book_detail/$bookId"
+    fun recommendations(category: MediaCategory) = "recommendations/${category.name}"
 }
 
 @Composable
@@ -76,7 +78,7 @@ fun TipilNavGraph(
                 displayName = authState.displayName,
                 onScanClick = { navController.navigate(Routes.SCANNER) },
                 onBookClick = { bookId -> navController.navigate(Routes.bookDetail(bookId)) },
-                onRecommendationsClick = { navController.navigate(Routes.RECOMMENDATIONS) },
+                onRecommendationsClick = { category -> navController.navigate(Routes.recommendations(category)) },
                 onThemeClick = { navController.navigate(Routes.THEME_PICKER) },
                 onSignOut = {
                     authViewModel.signOut()
@@ -133,11 +135,17 @@ fun TipilNavGraph(
             )
         }
 
-        composable(Routes.RECOMMENDATIONS) {
+        composable(
+            route = Routes.RECOMMENDATIONS,
+            arguments = listOf(navArgument("category") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val categoryName = backStackEntry.arguments?.getString("category") ?: MediaCategory.BOOKS.name
+            val category = try { MediaCategory.valueOf(categoryName) } catch (_: Exception) { MediaCategory.BOOKS }
             val recommendationsViewModel: RecommendationsViewModel = hiltViewModel()
             RecommendationsScreen(
                 viewModel = recommendationsViewModel,
                 userId = authState.userId,
+                category = category,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

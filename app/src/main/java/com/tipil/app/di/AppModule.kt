@@ -7,6 +7,7 @@ import com.tipil.app.data.local.BookDao
 import com.tipil.app.data.local.TipilDatabase
 import com.tipil.app.data.remote.GoogleBooksApi
 import com.tipil.app.data.remote.MusicBrainzApi
+import com.tipil.app.data.remote.OpenLibraryApi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -113,6 +114,17 @@ object AppModule {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(MusicBrainzApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideOpenLibraryApi(client: OkHttpClient): OpenLibraryApi {
+        return Retrofit.Builder()
+            .baseUrl("https://openlibrary.org/")
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(OpenLibraryApi::class.java)
     }
 
     @Provides
