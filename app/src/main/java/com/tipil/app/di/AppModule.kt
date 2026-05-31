@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.google.firebase.auth.FirebaseAuth
 import com.tipil.app.data.local.BookDao
+import com.tipil.app.data.local.NotFoundScanDao
 import com.tipil.app.data.local.TipilDatabase
 import com.tipil.app.data.remote.GoogleBooksApi
 import com.tipil.app.data.remote.MusicBrainzApi
@@ -39,7 +40,7 @@ object AppModule {
             TipilDatabase::class.java,
             "tipil_database"
         )
-            .addMigrations(TipilDatabase.MIGRATION_1_2, TipilDatabase.MIGRATION_2_3)
+            .addMigrations(TipilDatabase.MIGRATION_1_2, TipilDatabase.MIGRATION_2_3, TipilDatabase.MIGRATION_3_4)
             .build()
     }
 
@@ -47,6 +48,12 @@ object AppModule {
     @Singleton
     fun provideBookDao(database: TipilDatabase): BookDao {
         return database.bookDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideNotFoundScanDao(database: TipilDatabase): NotFoundScanDao {
+        return database.notFoundScanDao()
     }
 
     @Provides

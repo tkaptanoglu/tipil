@@ -5,11 +5,15 @@ import com.tipil.app.BuildConfig
 import com.tipil.app.data.local.BookDao
 import com.tipil.app.data.local.BookEntity
 import com.tipil.app.data.local.MediaType
+import com.tipil.app.data.local.NotFoundScanDao
+import com.tipil.app.data.local.NotFoundScanEntity
 import com.tipil.app.data.remote.GoogleBooksApi
 import com.tipil.app.data.remote.MusicBrainzApi
 import com.tipil.app.data.remote.OpenLibraryApi
 import com.tipil.app.data.remote.VolumeInfo
 import com.tipil.app.util.GenreClassifier
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,6 +23,7 @@ private const val TAG = "BookRepository"
 @Singleton
 class BookRepository @Inject constructor(
     private val bookDao: BookDao,
+    private val notFoundScanDao: NotFoundScanDao,
     private val googleBooksApi: GoogleBooksApi,
     private val musicBrainzApi: MusicBrainzApi,
     private val openLibraryApi: OpenLibraryApi,
@@ -74,6 +79,75 @@ class BookRepository @Inject constructor(
         if (olResult != null) return olResult
 
         return null
+    }
+
+    /**
+     * Auto-detect lookup: tries Google Books and MusicBrainz in parallel.
+     * Returns the first hit found, with the correct [MediaType] inferred
+     * from the API that matched (and, for music, from the release's format).
+     *
+     * Returns null only when neither API recognises the barcode.
+     */
+    suspend fun lookupByBarcode(barcode: String): BookLookupResult? = coroutineScope {
+        val bookDeferred = async { lookupBookByIsbn(barcode) }
+        val musicDeferred = async { lookupMusicByBarcodeAutoDetect(barcode) }
+
+        // Prefer book result if found (ISBNs are more precise than UPC matches)
+        val bookResult = bookDeferred.await()
+        if (bookResult != null) {
+            // Cancel the music lookup if still running — we have our answer
+            musicDeferred.cancel()
+            return@coroutineScope bookResult
+        }
+
+        musicDeferred.await()
+    }
+
+    /**
+     * MusicBrainz lookup that auto-detects the physical format from the
+     * release's media list (CD, Vinyl, Cassette, etc.).
+     */
+    private suspend fun lookupMusicByBarcodeAutoDetect(barcode: String): BookLookupResult? {
+        return try {
+            var searchResponse = musicBrainzApi.searchByBarcode("barcode:$barcode")
+            var release = searchResponse.releases?.firstOrNull()
+
+            if (release == null) {
+                searchResponse = musicBrainzApi.searchByBarcode(barcode)
+                release = searchResponse.releases?.firstOrNull()
+            }
+
+            if (release == null) return null
+
+            // Infer MediaType from the release's media format field
+            val detectedType = release.media
+                ?.firstOrNull()
+                ?.format
+                ?.let { inferMediaTypeFromFormat(it) }
+                ?: MediaType.CD
+
+            // Delegate to the existing music lookup, passing the detected type
+            lookupMusicByBarcode(barcode, detectedType)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "Auto-detect music lookup failed for $barcode", e)
+            null
+        }
+    }
+
+    /**
+     * Maps MusicBrainz media format strings to our [MediaType].
+     *
+     * MusicBrainz formats include: "CD", "12\" Vinyl", "7\" Vinyl",
+     * "Cassette", "Digital Media", "DVD-Video", etc.
+     */
+    private fun inferMediaTypeFromFormat(format: String): MediaType {
+        val f = format.lowercase()
+        return when {
+            f.contains("vinyl") -> MediaType.VINYL
+            f.contains("cassette") -> MediaType.CASSETTE
+            f.contains("dvd") -> MediaType.DVD
+            else -> MediaType.CD  // CD, Digital Media, and anything else
+        }
     }
 
     private suspend fun lookupViaGoogleBooks(isbn: String): BookLookupResult? {
@@ -478,6 +552,29 @@ class BookRepository @Inject constructor(
             if (BuildConfig.DEBUG) Log.w(TAG, "Genre recommendation failed for: $genre", e)
             emptyList()
         }
+    }
+
+    // ── Not-found scans ──
+
+    fun getNotFoundScans(userId: String): Flow<List<NotFoundScanEntity>> =
+        notFoundScanDao.getByUser(userId)
+
+    suspend fun saveNotFoundScan(userId: String, barcode: String, mediaType: MediaType) {
+        notFoundScanDao.insert(
+            NotFoundScanEntity(
+                userId = userId,
+                barcode = barcode,
+                mediaType = mediaType.name
+            )
+        )
+    }
+
+    suspend fun removeNotFoundScan(id: Long) {
+        notFoundScanDao.deleteById(id)
+    }
+
+    suspend fun removeNotFoundScanByBarcode(userId: String, barcode: String) {
+        notFoundScanDao.deleteByBarcode(userId, barcode)
     }
 
     private suspend fun collectUserGenres(userId: String): List<String> {

@@ -23,7 +23,7 @@ sealed class ScanState {
     data class AlreadyInLibrary(val isbn: String) : ScanState()
     data class NotFound(val isbn: String) : ScanState()
     data class Error(val message: String) : ScanState()
-    data object Added : ScanState()
+    data class Added(val mediaType: MediaType) : ScanState()
 }
 
 @HiltViewModel
@@ -42,7 +42,7 @@ class ScannerViewModel @Inject constructor(
      */
     private val processingLock = AtomicBoolean(false)
 
-    fun onBarcodeDetected(isbn: String, userId: String, mediaType: MediaType = MediaType.BOOK) {
+    fun onBarcodeDetected(isbn: String, userId: String) {
         // Atomically acquire the processing lock — only the first caller wins.
         // All subsequent calls (rapid camera frames) are silently dropped.
         if (!processingLock.compareAndSet(false, true)) return
@@ -58,11 +58,9 @@ class ScannerViewModel @Inject constructor(
                 return@launch
             }
 
-            val result = if (mediaType.isMusic) {
-                repository.lookupMusicByBarcode(isbn, mediaType)
-            } else {
-                repository.lookupBookByIsbn(isbn)
-            }
+            // Auto-detect: try both book and music APIs in parallel
+            val result = repository.lookupByBarcode(isbn)
+
             if (result != null) {
                 // Auto-add to library without confirmation
                 try {
@@ -84,11 +82,12 @@ class ScannerViewModel @Inject constructor(
                         mediaType = result.mediaType.name
                     )
                     repository.addBook(book)
-                    _scanState.update { ScanState.Added }
+                    _scanState.update { ScanState.Added(result.mediaType) }
                 } catch (e: Exception) {
                     _scanState.update { ScanState.Error("Failed to add: ${e.message}") }
                 }
             } else {
+                repository.saveNotFoundScan(userId, isbn, MediaType.BOOK)
                 _scanState.update { ScanState.NotFound(isbn) }
             }
         }
@@ -115,7 +114,7 @@ class ScannerViewModel @Inject constructor(
                     mediaType = result.mediaType.name
                 )
                 repository.addBook(book)
-                _scanState.update { ScanState.Added }
+                _scanState.update { ScanState.Added(result.mediaType) }
             } catch (e: Exception) {
                 _scanState.update { ScanState.Error("Failed to add book: ${e.message}") }
             }

@@ -26,6 +26,8 @@ import com.tipil.app.ui.bookdetail.BookDetailScreen
 import com.tipil.app.ui.bookdetail.BookDetailViewModel
 import com.tipil.app.ui.library.LibraryScreen
 import com.tipil.app.ui.library.LibraryViewModel
+import com.tipil.app.ui.notfound.NotFoundScreen
+import com.tipil.app.ui.notfound.NotFoundViewModel
 import com.tipil.app.ui.recommendations.RecommendationsScreen
 import com.tipil.app.ui.recommendations.RecommendationsViewModel
 import com.tipil.app.ui.scanner.ScannerScreen
@@ -39,6 +41,7 @@ object Routes {
     const val SCANNER = "scanner"
     const val BOOK_DETAIL = "book_detail/{bookId}"
     const val RECOMMENDATIONS = "recommendations/{category}"
+    const val NOT_FOUND = "not_found"
     const val THEME_PICKER = "theme_picker"
 
     fun bookDetail(bookId: Long) = "book_detail/$bookId"
@@ -79,6 +82,7 @@ fun TipilNavGraph(
                 onScanClick = { navController.navigate(Routes.SCANNER) },
                 onBookClick = { bookId -> navController.navigate(Routes.bookDetail(bookId)) },
                 onRecommendationsClick = { category -> navController.navigate(Routes.recommendations(category)) },
+                onNotFoundClick = { navController.navigate(Routes.NOT_FOUND) },
                 onThemeClick = { navController.navigate(Routes.THEME_PICKER) },
                 onSignOut = {
                     authViewModel.signOut()
@@ -146,6 +150,15 @@ fun TipilNavGraph(
                 viewModel = recommendationsViewModel,
                 userId = authState.userId,
                 category = category,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.NOT_FOUND) {
+            val notFoundViewModel: NotFoundViewModel = hiltViewModel()
+            NotFoundScreen(
+                viewModel = notFoundViewModel,
+                userId = authState.userId,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

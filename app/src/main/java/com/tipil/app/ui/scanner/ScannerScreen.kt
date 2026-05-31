@@ -37,7 +37,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,9 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,7 +67,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.repository.BookLookupResult
 import com.tipil.app.ui.theme.LocalExtraColors
-import com.tipil.app.util.IsbnValidator
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -78,22 +74,15 @@ import java.util.concurrent.Executors
 fun ScannerScreen(
     viewModel: ScannerViewModel,
     userId: String,
-    initialMediaType: MediaType = MediaType.BOOK,
     onNavigateBack: () -> Unit
 ) {
     val scanState by viewModel.scanState.collectAsState()
     val extra = LocalExtraColors.current
 
-    // The user can switch between Book and CD on the scanner screen itself.
-    // This is local state so it survives recomposition but not navigation.
-    var selectedMediaType by remember { mutableStateOf(initialMediaType) }
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(if (selectedMediaType.isMusic) "Scan Album" else "Scan ${selectedMediaType.label}")
-                },
+                title = { Text("Scan Item") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -107,31 +96,6 @@ fun ScannerScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // ── Media type selector (Book / CD / Cassette / Vinyl) ──
-            // Always visible while scanning so the user can switch what they're scanning.
-            if (scanState is ScanState.Scanning || scanState is ScanState.Looking) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val scanTypes = listOf(MediaType.BOOK, MediaType.CD, MediaType.CASSETTE, MediaType.VINYL)
-                    scanTypes.forEach { type ->
-                        FilterChip(
-                            selected = selectedMediaType == type,
-                            onClick = {
-                                if (selectedMediaType != type) {
-                                    selectedMediaType = type
-                                    viewModel.resetScanner()
-                                }
-                            },
-                            label = { Text(type.label) }
-                        )
-                    }
-                }
-            }
-
             // Camera preview area
             Box(
                 modifier = Modifier
@@ -141,11 +105,9 @@ fun ScannerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 if (scanState is ScanState.Scanning || scanState is ScanState.Looking) {
-                    // The camera accepts ALL valid barcodes (ISBN + UPC/EAN).
-                    // The selectedMediaType determines which API the ViewModel calls.
                     CameraPreview(
                         onBarcodeDetected = { barcode ->
-                            viewModel.onBarcodeDetected(barcode, userId, selectedMediaType)
+                            viewModel.onBarcodeDetected(barcode, userId)
                         }
                     )
 
@@ -160,7 +122,7 @@ fun ScannerScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator()
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(if (selectedMediaType.isMusic) "Looking up album..." else "Looking up...")
+                                Text("Looking up...")
                             }
                         }
                     }
@@ -193,10 +155,7 @@ fun ScannerScreen(
                     is ScanState.Scanning -> {
                         Spacer(modifier = Modifier.height(32.dp))
                         Text(
-                            if (selectedMediaType.isMusic)
-                                "Point your camera at the album's barcode"
-                            else
-                                "Point your camera at a ${selectedMediaType.label.lowercase()}'s barcode",
+                            "Point your camera at a barcode",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -222,10 +181,7 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            if (selectedMediaType.isMusic)
-                                "This ${selectedMediaType.label} is already in your library"
-                            else
-                                "This ${selectedMediaType.label.lowercase()} is already in your library",
+                            "This item is already in your library",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -244,17 +200,22 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            if (selectedMediaType.isMusic) "Album not found" else "${selectedMediaType.label} not found",
+                            "Item not found",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            if (selectedMediaType.isMusic) "Barcode: ${state.isbn}" else "ISBN: ${state.isbn}",
+                            "Barcode: ${state.isbn}",
                             style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Saved for later — you can retry from the Not Found list.",
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = { viewModel.resetScanner() }) {
-                            Text("Try Again")
+                            Text("Scan Another")
                         }
                     }
 
@@ -272,6 +233,7 @@ fun ScannerScreen(
                     }
 
                     is ScanState.Added -> {
+                        val label = state.mediaType.label
                         Spacer(modifier = Modifier.height(32.dp))
                         Icon(
                             Icons.Default.Check,
@@ -281,10 +243,7 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            if (selectedMediaType.isMusic)
-                                "${selectedMediaType.label} added to your library!"
-                            else
-                                "${selectedMediaType.label} added to your library!",
+                            "$label added to your library!",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))

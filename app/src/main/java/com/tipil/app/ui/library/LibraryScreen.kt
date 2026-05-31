@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -80,6 +81,7 @@ fun LibraryScreen(
     onScanClick: () -> Unit,
     onBookClick: (Long) -> Unit,
     onRecommendationsClick: (MediaCategory) -> Unit,
+    onNotFoundClick: () -> Unit,
     onThemeClick: () -> Unit,
     onSignOut: () -> Unit
 ) {
@@ -133,6 +135,9 @@ fun LibraryScreen(
                     IconButton(onClick = { onRecommendationsClick(uiState.selectedCategory) }) {
                         Icon(Icons.Default.Star, contentDescription = "Recommendations")
                     }
+                    IconButton(onClick = onNotFoundClick) {
+                        Icon(Icons.Default.Warning, contentDescription = "Not found items")
+                    }
                     IconButton(onClick = onThemeClick) {
                         Icon(Icons.Default.Settings, contentDescription = "Theme")
                     }
@@ -146,17 +151,10 @@ fun LibraryScreen(
             )
         },
         floatingActionButton = {
-            val scanLabel = when (uiState.selectedCategory) {
-                MediaCategory.BOOKS -> "SCAN BOOK"
-                MediaCategory.MUSIC -> "SCAN ALBUM"
-                MediaCategory.DVDS -> "SCAN DVD"
-                MediaCategory.MAGAZINES -> "SCAN MAGAZINE"
-                MediaCategory.BOARD_GAMES -> "SCAN GAME"
-            }
             ExtendedFloatingActionButton(
                 onClick = onScanClick,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text(scanLabel, style = MaterialTheme.typography.labelLarge) },
+                text = { Text("SCAN", style = MaterialTheme.typography.labelLarge) },
                 containerColor = MaterialTheme.colorScheme.tertiary,
                 contentColor = MaterialTheme.colorScheme.onTertiary
             )
