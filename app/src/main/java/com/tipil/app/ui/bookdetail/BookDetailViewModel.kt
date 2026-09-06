@@ -15,7 +15,10 @@ import javax.inject.Inject
 data class BookDetailUiState(
     val book: BookEntity? = null,
     val isLoading: Boolean = true,
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    val isRefreshing: Boolean = false,
+    /** One-shot result of a refresh, shown as a snackbar then cleared. */
+    val refreshMessage: String? = null
 )
 
 @HiltViewModel
@@ -42,6 +45,38 @@ class BookDetailViewModel @Inject constructor(
             repository.setReadStatus(book.id, currentUserId, !book.isRead)
             _uiState.update { it.copy(book = book.copy(isRead = !book.isRead)) }
         }
+    }
+
+    /**
+     * Re-runs the metadata lookup and overwrites the stored description of
+     * this item. The read/listened flag and the date it was added survive.
+     *
+     * A failed lookup leaves the existing record alone.
+     */
+    fun refresh() {
+        val book = _uiState.value.book ?: return
+        if (_uiState.value.isRefreshing) return
+
+        _uiState.update { it.copy(isRefreshing = true, refreshMessage = null) }
+
+        viewModelScope.launch {
+            val message = try {
+                val updated = repository.refreshItem(book)
+                if (updated != null) {
+                    _uiState.update { it.copy(book = updated) }
+                    "Details refreshed"
+                } else {
+                    "No updated details found"
+                }
+            } catch (e: Exception) {
+                "Refresh failed: ${e.message}"
+            }
+            _uiState.update { it.copy(isRefreshing = false, refreshMessage = message) }
+        }
+    }
+
+    fun clearRefreshMessage() {
+        _uiState.update { it.copy(refreshMessage = null) }
     }
 
     fun deleteBook() {

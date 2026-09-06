@@ -8,6 +8,9 @@ import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.local.NotFoundScanDao
 import com.tipil.app.data.local.NotFoundScanEntity
 import com.tipil.app.data.remote.GoogleBooksApi
+import com.tipil.app.data.remote.K10plusApi
+import com.tipil.app.data.remote.MarcRecord
+import com.tipil.app.data.remote.MarcXmlParser
 import com.tipil.app.data.remote.MusicBrainzApi
 import com.tipil.app.data.remote.OpenLibraryApi
 import com.tipil.app.data.remote.VolumeInfo
@@ -27,6 +30,7 @@ class BookRepository @Inject constructor(
     private val googleBooksApi: GoogleBooksApi,
     private val musicBrainzApi: MusicBrainzApi,
     private val openLibraryApi: OpenLibraryApi,
+    private val k10plusApi: K10plusApi,
     private val genreClassifier: GenreClassifier
 ) {
 
@@ -69,38 +73,113 @@ class BookRepository @Inject constructor(
     suspend fun isBookInLibrary(userId: String, isbn: String): Boolean =
         bookDao.getBookByIsbn(userId, isbn) != null
 
+    /**
+     * Resolve an ISBN to book metadata, trying each source in turn until one hits.
+     *
+     * Ordered cheapest and most precise first; every step short-circuits, so a
+     * title Google Books knows costs a single request. Only a genuine miss
+     * walks the whole chain.
+     *
+     *   1. Google Books, `isbn:` query — richest metadata when it hits.
+     *   2. Google Books, free text     — the structured ISBN index is less
+     *                                    complete than the full-text one, so
+     *                                    the same volume is often findable
+     *                                    as a raw term.
+     *   3. Open Library edition        — /isbn/{isbn}.json.
+     *   4. Open Library Books API      — a separate index; resolves some ISBNs
+     *                                    that step 3 404s on.
+     *   5. Open Library search         — matches ISBNs listed on a work whose
+     *                                    edition record is missing.
+     *   6. K10plus (MARCXML)           — a different corpus entirely; the only
+     *                                    step that can find a book Google and
+     *                                    Open Library have never indexed.
+     */
     suspend fun lookupBookByIsbn(isbn: String): BookLookupResult? {
-        // Try Google Books first
-        val googleResult = lookupViaGoogleBooks(isbn)
-        if (googleResult != null) return googleResult
-
-        // Fallback: Open Library
-        val olResult = lookupViaOpenLibrary(isbn)
-        if (olResult != null) return olResult
-
+        lookupViaGoogleBooks(isbn)?.let { return it }
+        lookupViaGoogleBooksFreeText(isbn)?.let { return it }
+        lookupViaOpenLibrary(isbn)?.let { return it }
+        lookupViaOpenLibraryApiBooks(isbn)?.let { return it }
+        lookupViaOpenLibrarySearch(isbn)?.let { return it }
+        lookupViaK10plus(isbn)?.let { return it }
         return null
     }
 
     /**
-     * Auto-detect lookup: tries Google Books and MusicBrainz in parallel.
-     * Returns the first hit found, with the correct [MediaType] inferred
-     * from the API that matched (and, for music, from the release's format).
+     * Auto-detect lookup: tries the book chain and MusicBrainz in parallel.
+     * Returns the first hit, with the [MediaType] inferred from whichever
+     * source matched (and, for music, from the release's format).
      *
-     * Returns null only when neither API recognises the barcode.
+     * [preferredType] biases which answer wins when both could match. Scanning
+     * leaves it null, so books take precedence — an ISBN match is stronger
+     * evidence than a UPC one. Refreshing an item passes the type it already
+     * has, so a CD in the library cannot be silently reclassified as a book by
+     * a coincidental match.
+     *
+     * Returns null only when neither side recognises the barcode.
      */
-    suspend fun lookupByBarcode(barcode: String): BookLookupResult? = coroutineScope {
+    suspend fun lookupByBarcode(
+        barcode: String,
+        preferredType: MediaType? = null
+    ): BookLookupResult? = coroutineScope {
         val bookDeferred = async { lookupBookByIsbn(barcode) }
         val musicDeferred = async { lookupMusicByBarcodeAutoDetect(barcode) }
 
-        // Prefer book result if found (ISBNs are more precise than UPC matches)
-        val bookResult = bookDeferred.await()
-        if (bookResult != null) {
+        if (preferredType?.isMusic == true) {
+            musicDeferred.await()?.let {
+                bookDeferred.cancel()
+                return@coroutineScope it
+            }
+            return@coroutineScope bookDeferred.await()
+        }
+
+        bookDeferred.await()?.let {
             // Cancel the music lookup if still running — we have our answer
             musicDeferred.cancel()
-            return@coroutineScope bookResult
+            return@coroutineScope it
         }
 
         musicDeferred.await()
+    }
+
+    /**
+     * Re-runs the lookup chain for an item already in the library and writes
+     * the fresh metadata over the stored record.
+     *
+     * Everything the user owns is preserved: the row [BookEntity.id], its
+     * [BookEntity.userId], the scanned [BookEntity.isbn], the read/listened
+     * flag, and the original [BookEntity.addedAt] date. Everything descriptive
+     * is replaced.
+     *
+     * Returns the updated entity, or null when no source recognises the
+     * barcode — in which case the stored record is left untouched rather than
+     * being blanked out.
+     */
+    suspend fun refreshItem(book: BookEntity): BookEntity? {
+        val currentType = MediaType.fromName(book.mediaType)
+        val result = lookupByBarcode(book.isbn, preferredType = currentType) ?: return null
+
+        // A refresh may resolve through a different source than the original
+        // scan did, and the sources do not all carry the same fields — K10plus
+        // has no cover art, for one. Overwrite with what the new source knows,
+        // but let an existing value stand where it knows nothing, so refreshing
+        // never strips detail the record already had.
+        val updated = book.copy(
+            title = result.title.ifBlank { book.title },
+            subtitle = result.subtitle.ifBlank { book.subtitle },
+            authors = result.authors.ifBlank { book.authors },
+            publisher = result.publisher.ifBlank { book.publisher },
+            editor = result.editor.ifBlank { book.editor },
+            publishedYear = result.publishedYear.ifBlank { book.publishedYear },
+            pageCount = if (result.pageCount > 0) result.pageCount else book.pageCount,
+            isFiction = result.isFiction,
+            genres = result.genres.ifEmpty { book.genres },
+            coverUrl = result.coverUrl.ifBlank { book.coverUrl },
+            description = result.description.ifBlank { book.description },
+            mediaType = result.mediaType.name
+        )
+
+        bookDao.updateBook(updated)
+        return updated
     }
 
     /**
@@ -156,30 +235,62 @@ class BookRepository @Inject constructor(
                 query = "isbn:$isbn",
                 apiKey = BuildConfig.GOOGLE_BOOKS_API_KEY
             )
-            val item = response.items?.firstOrNull() ?: return null
-            val info = item.volumeInfo
-            val genres = genreClassifier.classify(info)
-            val isFiction = genreClassifier.isFiction(info)
-
-            BookLookupResult(
-                isbn = isbn,
-                title = info.title,
-                subtitle = info.subtitle ?: "",
-                authors = info.authors?.joinToString(", ") ?: "",
-                publisher = info.publisher ?: "",
-                editor = "",
-                publishedYear = info.publishedDate?.take(4) ?: "",
-                pageCount = info.pageCount ?: 0,
-                isFiction = isFiction,
-                genres = genres,
-                coverUrl = info.imageLinks?.thumbnail?.replace("http://", "https://") ?: "",
-                description = info.description ?: ""
-            )
+            val info = response.items?.firstOrNull()?.volumeInfo ?: return null
+            volumeInfoToResult(info, isbn)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.e(TAG, "Google Books lookup failed for $isbn", e)
             null
         }
     }
+
+    /**
+     * Google Books again, this time with the ISBN as a plain search term.
+     *
+     * Google's structured `isbn:` index is noticeably thinner than its
+     * full-text index, so a volume that the first query misses is often still
+     * reachable this way.
+     *
+     * Free text will happily return unrelated books for an unmatched number,
+     * so a candidate is only accepted when its own industry identifiers list
+     * the ISBN that was asked for.
+     */
+    private suspend fun lookupViaGoogleBooksFreeText(isbn: String): BookLookupResult? {
+        return try {
+            val response = googleBooksApi.searchBooks(
+                query = isbn,
+                maxResults = 5,
+                apiKey = BuildConfig.GOOGLE_BOOKS_API_KEY
+            )
+            val target = normalizeIsbn(isbn)
+            val info = response.items
+                ?.map { it.volumeInfo }
+                ?.firstOrNull { vi ->
+                    vi.industryIdentifiers?.any { normalizeIsbn(it.identifier) == target } == true
+                } ?: return null
+
+            volumeInfoToResult(info, isbn)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "Google Books free-text lookup failed for $isbn", e)
+            null
+        }
+    }
+
+    /** Shared mapping for both Google Books query styles. */
+    private fun volumeInfoToResult(info: VolumeInfo, isbn: String): BookLookupResult =
+        BookLookupResult(
+            isbn = isbn,
+            title = info.title,
+            subtitle = info.subtitle ?: "",
+            authors = info.authors?.joinToString(", ") ?: "",
+            publisher = info.publisher ?: "",
+            editor = "",
+            publishedYear = info.publishedDate?.take(4) ?: "",
+            pageCount = info.pageCount ?: 0,
+            isFiction = genreClassifier.isFiction(info),
+            genres = genreClassifier.classify(info),
+            coverUrl = info.imageLinks?.thumbnail?.replace("http://", "https://") ?: "",
+            description = info.description ?: ""
+        )
 
     private suspend fun lookupViaOpenLibrary(isbn: String): BookLookupResult? {
         return try {
@@ -209,15 +320,8 @@ class BookRepository @Inject constructor(
                 }
             }
 
-            // Map subjects to genres (take top 5, capitalize)
-            val genres = subjects
-                .take(5)
-                .map { it.replaceFirstChar { c -> c.uppercase() } }
-
-            // Determine fiction status from subjects
-            val subjectsLower = subjects.map { it.lowercase() }
-            val isFiction = subjectsLower.any { it.contains("fiction") }
-                    && !subjectsLower.any { it.contains("non-fiction") || it.contains("nonfiction") }
+            val genres = subjectsToGenres(subjects)
+            val isFiction = inferFictionFromSubjects(subjects)
 
             // Build cover URL from cover ID
             val coverId = edition.covers?.firstOrNull()
@@ -247,6 +351,185 @@ class BookRepository @Inject constructor(
             if (BuildConfig.DEBUG) Log.e(TAG, "Open Library lookup failed for $isbn", e)
             null
         }
+    }
+
+    /**
+     * Last-resort ISBN lookup via the Open Library search index.
+     *
+     * Reached only when both Google Books and the Open Library edition endpoint
+     * come up empty. The search index carries ISBNs at the *work* level, so it
+     * still matches editions that have no /isbn/{isbn}.json record of their own.
+     *
+     * Because search is fuzzy and will happily return a loosely-related title
+     * rather than nothing, the returned doc is only accepted if it actually
+     * lists the ISBN we asked for.
+     */
+    private suspend fun lookupViaOpenLibrarySearch(isbn: String): BookLookupResult? {
+        return try {
+            val response = openLibraryApi.search(query = "isbn:$isbn")
+
+            val doc = response.docs?.firstOrNull { doc ->
+                doc.isbn?.any { normalizeIsbn(it) == normalizeIsbn(isbn) } == true
+            } ?: return null
+
+            val subjects = doc.subjects ?: emptyList()
+
+            BookLookupResult(
+                isbn = isbn,
+                title = doc.title,
+                subtitle = doc.subtitle ?: "",
+                authors = doc.authorName?.joinToString(", ") ?: "",
+                publisher = doc.publisher?.firstOrNull() ?: "",
+                editor = "",
+                publishedYear = doc.firstPublishYear?.toString() ?: "",
+                pageCount = doc.pageCount ?: 0,
+                isFiction = inferFictionFromSubjects(subjects),
+                genres = subjectsToGenres(subjects),
+                coverUrl = doc.coverId
+                    ?.takeIf { it > 0 }
+                    ?.let { "https://covers.openlibrary.org/b/id/$it-M.jpg" }
+                    ?: "",
+                description = ""
+            )
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "Open Library search lookup failed for $isbn", e)
+            null
+        }
+    }
+
+    /**
+     * Open Library's Books API — a separate index from the edition endpoint,
+     * which resolves some ISBNs that /isbn/{isbn}.json has no record for.
+     *
+     * Authors, publishers and subjects come back already named, so unlike
+     * [lookupViaOpenLibrary] this needs no follow-up author or work requests.
+     */
+    private suspend fun lookupViaOpenLibraryApiBooks(isbn: String): BookLookupResult? {
+        return try {
+            val bibkey = "ISBN:$isbn"
+            val book = openLibraryApi.getByBibkeys(bibkeys = bibkey)[bibkey] ?: return null
+
+            val subjects = book.subjects?.map { it.name }.orEmpty()
+
+            BookLookupResult(
+                isbn = isbn,
+                title = book.title,
+                subtitle = book.subtitle ?: "",
+                authors = book.authors?.joinToString(", ") { it.name } ?: "",
+                publisher = book.publishers?.firstOrNull()?.name ?: "",
+                editor = "",
+                publishedYear = extractYear(book.publishDate),
+                pageCount = book.numberOfPages ?: 0,
+                isFiction = inferFictionFromSubjects(subjects),
+                genres = subjectsToGenres(subjects),
+                coverUrl = (book.cover?.medium ?: book.cover?.large ?: book.cover?.small)
+                    ?.replace("http://", "https://").orEmpty(),
+                description = book.excerpts?.firstNotNullOfOrNull { it.text }.orEmpty()
+            )
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "Open Library Books API lookup failed for $isbn", e)
+            null
+        }
+    }
+
+    /**
+     * K10plus union catalogue over SRU, returning MARCXML.
+     *
+     * The last link in the chain and the only one backed by a different corpus
+     * than Google Books and Open Library, so it is the step that can rescue a
+     * title neither of those has ever indexed.
+     *
+     * A matched record may describe a different manifestation than the copy in
+     * hand — an ebook edition of the same work, say — so the scanned ISBN is
+     * kept rather than replaced with the record's own 020.
+     */
+    private suspend fun lookupViaK10plus(isbn: String): BookLookupResult? {
+        return try {
+            val xml = k10plusApi.search(query = "pica.isb=$isbn").string()
+            val record = MarcXmlParser.parseFirstRecord(xml) ?: return null
+            marcRecordToResult(record, isbn)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e(TAG, "K10plus lookup failed for $isbn", e)
+            null
+        }
+    }
+
+    /**
+     * Maps the MARC21 fields the app displays:
+     *   245 title/subtitle, 100+700 authors, 264 (else 260) publisher and date,
+     *   300 extent, 520 summary, 650 subject headings.
+     */
+    private fun marcRecordToResult(record: MarcRecord, isbn: String): BookLookupResult? {
+        val title = record.first("245", "a")?.let { stripMarcPunctuation(it) } ?: return null
+
+        val authors = buildList {
+            record.first("100", "a")?.let { add(it) }
+            addAll(record.all("700", "a"))
+        }.map { stripMarcPunctuation(it) }.distinct()
+
+        val publisher = record.firstPreferringInd2("264", "b", "1")
+            ?: record.first("260", "b")
+
+        val rawDate = record.firstPreferringInd2("264", "c", "1")
+            ?: record.first("260", "c")
+
+        val subjects = record.all("650", "a").map { stripMarcPunctuation(it) }
+
+        return BookLookupResult(
+            isbn = isbn,
+            title = title,
+            subtitle = record.first("245", "b")?.let { stripMarcPunctuation(it) } ?: "",
+            authors = authors.joinToString(", "),
+            publisher = publisher?.let { stripMarcPunctuation(it) } ?: "",
+            editor = "",
+            publishedYear = extractYear(rawDate),
+            pageCount = extractPageCount(record.first("300", "a")),
+            isFiction = inferFictionFromSubjects(subjects),
+            genres = subjectsToGenres(subjects),
+            coverUrl = "",  // K10plus carries no cover art
+            description = record.first("520", "a").orEmpty()
+        )
+    }
+
+    /**
+     * MARC values carry ISBD punctuation that marks the *next* subfield —
+     * "Introduction to algorithms /" or "Cambridge :". None of it belongs on
+     * screen.
+     */
+    private fun stripMarcPunctuation(value: String): String =
+        value.trim().trimEnd(' ', '/', ':', ';', ',', '=').trim()
+
+    /** Pulls a 4-digit year out of strings like "[2009]", "c2009" or "2009-". */
+    private fun extractYear(raw: String?): String =
+        raw?.let { Regex("\\d{4}").find(it)?.value }.orEmpty()
+
+    /**
+     * MARC 300$a is prose: "1 Online-Ressource (xix, 1292 Seiten)", "328 p.".
+     * The largest number in it is the page count; the first one often is not.
+     */
+    private fun extractPageCount(extent: String?): Int {
+        if (extent == null) return 0
+        return Regex("\\d+").findAll(extent)
+            .mapNotNull { it.value.toIntOrNull() }
+            .maxOrNull() ?: 0
+    }
+
+    /**
+     * Strips formatting so ISBNs from different sources compare equal.
+     * Open Library returns them variously as "9780140328721" or "0-14-032872-X".
+     */
+    private fun normalizeIsbn(isbn: String): String =
+        isbn.filter { it.isLetterOrDigit() }.uppercase()
+
+    /** Maps Open Library subjects to display genres (top 5, capitalized). */
+    private fun subjectsToGenres(subjects: List<String>): List<String> =
+        subjects.take(5).map { it.replaceFirstChar { c -> c.uppercase() } }
+
+    /** Infers fiction status from Open Library subjects. */
+    private fun inferFictionFromSubjects(subjects: List<String>): Boolean {
+        val lower = subjects.map { it.lowercase() }
+        return lower.any { it.contains("fiction") } &&
+                !lower.any { it.contains("non-fiction") || it.contains("nonfiction") }
     }
 
     /** Open Library description can be a String or a Map with "value" key. */

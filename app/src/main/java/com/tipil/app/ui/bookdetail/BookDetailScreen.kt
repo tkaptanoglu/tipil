@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -36,6 +37,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -67,6 +70,7 @@ fun BookDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
     val extra = LocalExtraColors.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(bookId) {
         viewModel.loadBook(bookId, userId)
@@ -74,6 +78,13 @@ fun BookDetailScreen(
 
     LaunchedEffect(uiState.isDeleted) {
         if (uiState.isDeleted) onNavigateBack()
+    }
+
+    LaunchedEffect(uiState.refreshMessage) {
+        uiState.refreshMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearRefreshMessage()
+        }
     }
 
     if (showDeleteDialog) {
@@ -114,6 +125,29 @@ fun BookDetailScreen(
                     }
                 },
                 actions = {
+                    if (uiState.isRefreshing) {
+                        // Occupies the same slot as the button so the bar
+                        // doesn't reflow while the lookup runs.
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    } else {
+                        IconButton(
+                            onClick = { viewModel.refresh() },
+                            enabled = uiState.book != null
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh details"
+                            )
+                        }
+                    }
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(
                             Icons.Default.Delete,
@@ -123,7 +157,8 @@ fun BookDetailScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         if (uiState.isLoading) {
             Box(

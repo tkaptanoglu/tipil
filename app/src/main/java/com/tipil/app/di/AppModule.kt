@@ -7,6 +7,7 @@ import com.tipil.app.data.local.BookDao
 import com.tipil.app.data.local.NotFoundScanDao
 import com.tipil.app.data.local.TipilDatabase
 import com.tipil.app.data.remote.GoogleBooksApi
+import com.tipil.app.data.remote.K10plusApi
 import com.tipil.app.data.remote.MusicBrainzApi
 import com.tipil.app.data.remote.OpenLibraryApi
 import dagger.Module
@@ -27,6 +28,10 @@ import javax.inject.Singleton
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class MusicBrainzClient
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class K10plusClient
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -132,6 +137,51 @@ object AppModule {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(OpenLibraryApi::class.java)
+    }
+
+    /**
+     * K10plus is a public library service; it asks callers to identify
+     * themselves, same as MusicBrainz.
+     */
+    @Provides
+    @Singleton
+    @K10plusClient
+    fun provideK10plusClient(): OkHttpClient {
+        val userAgentInterceptor = Interceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header("User-Agent", "Tipil/${BuildConfig.VERSION_NAME} (tipil.app)")
+                    .build()
+            )
+        }
+
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .addInterceptor(userAgentInterceptor)
+
+        if (BuildConfig.DEBUG) {
+            builder.addInterceptor(
+                HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BASIC
+                }
+            )
+        }
+        return builder.build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideK10plusApi(@K10plusClient client: OkHttpClient): K10plusApi {
+        return Retrofit.Builder()
+            .baseUrl("https://sru.k10plus.de/")
+            .client(client)
+            // MARCXML is read as a raw ResponseBody; Gson is only here so the
+            // builder has a converter for any future JSON endpoints.
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(K10plusApi::class.java)
     }
 
     @Provides
