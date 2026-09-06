@@ -14,6 +14,8 @@ data class MbRelease(
     @SerializedName("title") val title: String = "",
     @SerializedName("status") val status: String? = null,
     @SerializedName("date") val date: String? = null,
+    /** Present on most search hits; used to confirm free-text matches. */
+    @SerializedName("barcode") val barcode: String? = null,
     @SerializedName("country") val country: String? = null,
     @SerializedName("artist-credit") val artistCredit: List<MbArtistCredit>? = null,
     @SerializedName("release-group") val releaseGroup: MbReleaseGroupRef? = null,

@@ -28,6 +28,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -35,11 +37,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.tipil.app.data.local.MediaType
 import com.tipil.app.data.local.NotFoundScanEntity
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,9 +55,17 @@ fun NotFoundScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(userId) {
         viewModel.loadScans(userId)
+    }
+
+    LaunchedEffect(uiState.retryMessage) {
+        uiState.retryMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearRetryMessage()
+        }
     }
 
     Scaffold(
@@ -71,7 +81,8 @@ fun NotFoundScreen(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         if (uiState.scans.isEmpty() && !uiState.isLoading) {
             Column(
@@ -132,7 +143,6 @@ private fun NotFoundCard(
     onRetry: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val mediaType = MediaType.fromName(scan.mediaType)
     val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
     val dateStr = dateFormat.format(Date(scan.scannedAt))
 
@@ -155,18 +165,13 @@ private fun NotFoundCard(
                     fontWeight = FontWeight.Medium
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        mediaType.label,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        dateStr,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                // No media type is shown: an unidentified barcode has no known
+                // type, and labelling every entry "Book" was simply wrong.
+                Text(
+                    "Scanned $dateStr",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(modifier = Modifier.width(8.dp))

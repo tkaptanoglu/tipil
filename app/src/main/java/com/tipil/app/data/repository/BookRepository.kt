@@ -11,6 +11,7 @@ import com.tipil.app.data.remote.GoogleBooksApi
 import com.tipil.app.data.remote.K10plusApi
 import com.tipil.app.data.remote.MarcRecord
 import com.tipil.app.data.remote.MarcXmlParser
+import com.tipil.app.data.remote.MbRelease
 import com.tipil.app.data.remote.MusicBrainzApi
 import com.tipil.app.data.remote.OpenLibraryApi
 import com.tipil.app.data.remote.VolumeInfo
@@ -186,30 +187,33 @@ class BookRepository @Inject constructor(
      * MusicBrainz lookup that auto-detects the physical format from the
      * release's media list (CD, Vinyl, Cassette, etc.).
      */
-    private suspend fun lookupMusicByBarcodeAutoDetect(barcode: String): BookLookupResult? {
-        return try {
-            var searchResponse = musicBrainzApi.searchByBarcode("barcode:$barcode")
-            var release = searchResponse.releases?.firstOrNull()
+    private suspend fun lookupMusicByBarcodeAutoDetect(barcode: String): BookLookupResult? =
+        lookupMusicByBarcode(barcode, forcedType = null)
 
-            if (release == null) {
-                searchResponse = musicBrainzApi.searchByBarcode(barcode)
-                release = searchResponse.releases?.firstOrNull()
-            }
+    /**
+     * Finds the MusicBrainz release for a barcode.
+     *
+     * Two queries at most: the indexed `barcode:` field first, then the
+     * barcode as free text, which catches releases — cassettes especially —
+     * whose barcode was recorded somewhere other than the barcode field.
+     *
+     * Free text searches every field, so it can match a catalogue number or a
+     * title that merely contains the digits. A free-text hit is therefore only
+     * accepted when the release's own barcode agrees, or when MusicBrainz
+     * recorded no barcode at all to contradict it.
+     */
+    private suspend fun findMusicRelease(barcode: String): MbRelease? {
+        musicBrainzApi.searchByBarcode("barcode:$barcode").releases?.firstOrNull()
+            ?.let { return it }
 
-            if (release == null) return null
+        val loose = musicBrainzApi.searchByBarcode(barcode).releases?.firstOrNull()
+            ?: return null
 
-            // Infer MediaType from the release's media format field
-            val detectedType = release.media
-                ?.firstOrNull()
-                ?.format
-                ?.let { inferMediaTypeFromFormat(it) }
-                ?: MediaType.CD
-
-            // Delegate to the existing music lookup, passing the detected type
-            lookupMusicByBarcode(barcode, detectedType)
-        } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.e(TAG, "Auto-detect music lookup failed for $barcode", e)
-            null
+        val releaseBarcode = loose.barcode
+        return when {
+            releaseBarcode.isNullOrBlank() -> loose
+            normalizeIsbn(releaseBarcode) == normalizeIsbn(barcode) -> loose
+            else -> null
         }
     }
 
@@ -549,20 +553,17 @@ class BookRepository @Inject constructor(
      *
      * @param mediaType The specific format (CD, CASSETTE, VINYL) to tag the result with.
      */
-    suspend fun lookupMusicByBarcode(barcode: String, mediaType: MediaType = MediaType.CD): BookLookupResult? {
+    suspend fun lookupMusicByBarcode(
+        barcode: String,
+        forcedType: MediaType? = MediaType.CD
+    ): BookLookupResult? {
         return try {
-            // Step 1: Search by barcode — try exact barcode query first
-            var searchResponse = musicBrainzApi.searchByBarcode("barcode:$barcode")
-            var release = searchResponse.releases?.firstOrNull()
+            val release = findMusicRelease(barcode) ?: return null
 
-            // Fallback: try without the "barcode:" prefix (free-text search)
-            // Many cassettes and older media have inconsistent barcode registrations
-            if (release == null) {
-                searchResponse = musicBrainzApi.searchByBarcode(barcode)
-                release = searchResponse.releases?.firstOrNull()
-            }
-
-            if (release == null) return null
+            // Either honour the caller's format or read it off the release.
+            val mediaType = forcedType
+                ?: release.media?.firstOrNull()?.format?.let { inferMediaTypeFromFormat(it) }
+                ?: MediaType.CD
 
             // Extract artist name from credits
             val artist = release.artistCredit

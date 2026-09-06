@@ -25,6 +25,39 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
+/**
+ * Spaces requests out to at most one per [minIntervalMs].
+ *
+ * MusicBrainz caps callers at roughly one request a second and answers 503
+ * once that is exceeded. Without this the app could fire several searches
+ * back to back — a single lookup issues two, and retrying a list of items
+ * issues many — and every throttled response would surface indistinguishably
+ * from "no such release".
+ *
+ * Blocking is safe here: OkHttp runs interceptors on its own dispatcher
+ * threads, never the main thread.
+ */
+class MinIntervalInterceptor(private val minIntervalMs: Long) : Interceptor {
+    private val lock = Any()
+    private var lastRequestAt = 0L
+
+    override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+        synchronized(lock) {
+            val waitFor = lastRequestAt + minIntervalMs - System.currentTimeMillis()
+            if (waitFor > 0) {
+                try {
+                    Thread.sleep(waitFor)
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw java.io.InterruptedIOException("Interrupted while rate limiting")
+                }
+            }
+            lastRequestAt = System.currentTimeMillis()
+        }
+        return chain.proceed(chain.request())
+    }
+}
+
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class MusicBrainzClient
@@ -106,6 +139,8 @@ object AppModule {
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .addInterceptor(userAgentInterceptor)
+            // MusicBrainz allows ~1 request/second; exceeding it returns 503.
+            .addInterceptor(MinIntervalInterceptor(minIntervalMs = 1100))
 
         if (BuildConfig.DEBUG) {
             builder.addInterceptor(

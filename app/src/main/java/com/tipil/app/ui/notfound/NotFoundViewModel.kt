@@ -16,7 +16,9 @@ import javax.inject.Inject
 data class NotFoundUiState(
     val scans: List<NotFoundScanEntity> = emptyList(),
     val retryingId: Long? = null,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    /** One-shot outcome of a retry, shown as a snackbar then cleared. */
+    val retryMessage: String? = null
 )
 
 @HiltViewModel
@@ -38,13 +40,20 @@ class NotFoundViewModel @Inject constructor(
     fun retry(scan: NotFoundScanEntity, userId: String) {
         if (_uiState.value.retryingId != null) return
 
-        _uiState.update { it.copy(retryingId = scan.id) }
+        _uiState.update { it.copy(retryingId = scan.id, retryMessage = null) }
 
         viewModelScope.launch {
             // Auto-detect: try both book and music APIs in parallel
-            val result = repository.lookupByBarcode(scan.barcode)
+            val result = try {
+                repository.lookupByBarcode(scan.barcode)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(retryingId = null, retryMessage = "Lookup failed: ${e.message}")
+                }
+                return@launch
+            }
 
-            if (result != null) {
+            val message = if (result != null) {
                 try {
                     val book = BookEntity(
                         userId = userId,
@@ -65,14 +74,23 @@ class NotFoundViewModel @Inject constructor(
                     )
                     repository.addBook(book)
                     repository.removeNotFoundScan(scan.id)
+                    "Added \"${result.title}\""
                 } catch (_: Exception) {
-                    // Duplicate or other insert error — just remove from not-found list
+                    // Duplicate insert — the item is already in the library, so
+                    // the queue entry is stale either way.
                     repository.removeNotFoundScan(scan.id)
+                    "Already in your library"
                 }
+            } else {
+                "Still not found in any source"
             }
 
-            _uiState.update { it.copy(retryingId = null) }
+            _uiState.update { it.copy(retryingId = null, retryMessage = message) }
         }
+    }
+
+    fun clearRetryMessage() {
+        _uiState.update { it.copy(retryMessage = null) }
     }
 
     fun delete(scan: NotFoundScanEntity) {
