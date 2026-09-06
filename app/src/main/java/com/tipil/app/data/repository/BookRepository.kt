@@ -861,6 +861,11 @@ class BookRepository @Inject constructor(
         notFoundScanDao.deleteByBarcode(userId, barcode)
     }
 
+    /** Clears this user's entire not-found queue. */
+    suspend fun clearNotFoundScans(userId: String) {
+        notFoundScanDao.deleteAllForUser(userId)
+    }
+
     private suspend fun collectUserGenres(userId: String): List<String> {
         val rawGenres = bookDao.getAllGenresRaw(userId)
         return rawGenres

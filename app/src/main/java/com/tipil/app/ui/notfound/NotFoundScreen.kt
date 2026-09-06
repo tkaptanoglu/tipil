@@ -12,13 +12,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,16 +34,25 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tipil.app.data.local.NotFoundScanEntity
 import java.text.SimpleDateFormat
@@ -56,6 +68,8 @@ fun NotFoundScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val listState = rememberLazyListState()
+    var showClearAllDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(userId) {
         viewModel.loadScans(userId)
@@ -68,6 +82,38 @@ fun NotFoundScreen(
         }
     }
 
+    if (showClearAllDialog) {
+        val count = uiState.scans.size
+        AlertDialog(
+            onDismissRequest = { showClearAllDialog = false },
+            title = { Text("Clear the list") },
+            text = {
+                Text(
+                    if (count == 1) {
+                        "Remove the 1 unidentified barcode? This can't be undone."
+                    } else {
+                        "Remove all $count unidentified barcodes? This can't be undone."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearAll(userId)
+                        showClearAllDialog = false
+                    }
+                ) {
+                    Text("Remove all", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -75,6 +121,23 @@ fun NotFoundScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // A labelled button rather than a second trash icon, which
+                    // would be easy to mistake for the per-row delete.
+                    TextButton(
+                        onClick = { showClearAllDialog = true },
+                        enabled = uiState.scans.isNotEmpty()
+                    ) {
+                        Text(
+                            "Clear all",
+                            color = if (uiState.scans.isNotEmpty()) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            }
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -114,10 +177,17 @@ fun NotFoundScreen(
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(paddingValues)
+                    .verticalScrollbar(
+                        state = listState,
+                        thumbColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    ),
+                // Right padding leaves a lane for the scrollbar so the cards
+                // never sit underneath it.
+                contentPadding = PaddingValues(start = 16.dp, end = 22.dp, top = 8.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(
@@ -134,6 +204,56 @@ fun NotFoundScreen(
             }
         }
     }
+}
+
+/**
+ * Draws a scrollbar down the right edge of a lazy list.
+ *
+ * Compose has no built-in scrollbar for [LazyColumn], so the thumb is drawn
+ * over the content: its height is the visible fraction of the list, its
+ * position the scroll progress. Nothing is drawn when the whole list already
+ * fits on screen.
+ *
+ * Position is derived from the first visible item's index plus how far it has
+ * been scrolled, which tracks the content accurately while item heights are
+ * near-uniform, as they are here.
+ */
+private fun Modifier.verticalScrollbar(
+    state: LazyListState,
+    thumbColor: Color,
+    width: Dp = 4.dp,
+    minThumbHeight: Dp = 24.dp
+): Modifier = drawWithContent {
+    drawContent()
+
+    val info = state.layoutInfo
+    val visible = info.visibleItemsInfo
+    val totalItems = info.totalItemsCount
+
+    // Nothing to scroll, or nothing laid out yet.
+    if (totalItems == 0 || visible.isEmpty() || visible.size >= totalItems) {
+        return@drawWithContent
+    }
+
+    val widthPx = width.toPx()
+    val trackHeight = size.height
+
+    val thumbHeight = (trackHeight * visible.size / totalItems)
+        .coerceAtLeast(minThumbHeight.toPx())
+
+    val firstVisible = visible.first()
+    val itemHeight = firstVisible.size.toFloat().coerceAtLeast(1f)
+    // offset is negative once the item is partly scrolled off the top.
+    val scrolledItems = firstVisible.index + (-firstVisible.offset / itemHeight)
+    val maxScroll = (totalItems - visible.size).toFloat().coerceAtLeast(1f)
+    val progress = (scrolledItems / maxScroll).coerceIn(0f, 1f)
+
+    drawRoundRect(
+        color = thumbColor,
+        topLeft = Offset(size.width - widthPx, (trackHeight - thumbHeight) * progress),
+        size = Size(widthPx, thumbHeight),
+        cornerRadius = CornerRadius(widthPx / 2)
+    )
 }
 
 @Composable

@@ -98,4 +98,23 @@ class NotFoundViewModel @Inject constructor(
             repository.removeNotFoundScan(scan.id)
         }
     }
+
+    /**
+     * Empties the queue. The caller is expected to have confirmed with the
+     * user first — this discards every entry and cannot be undone.
+     */
+    fun clearAll(userId: String) {
+        val count = _uiState.value.scans.size
+        if (count == 0) return
+
+        viewModelScope.launch {
+            val message = try {
+                repository.clearNotFoundScans(userId)
+                if (count == 1) "Removed 1 item" else "Removed $count items"
+            } catch (e: Exception) {
+                "Couldn't clear the list: ${e.message}"
+            }
+            _uiState.update { it.copy(retryMessage = message) }
+        }
+    }
 }

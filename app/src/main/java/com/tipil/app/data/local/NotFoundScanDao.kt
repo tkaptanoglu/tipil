@@ -20,4 +20,8 @@ interface NotFoundScanDao {
 
     @Query("DELETE FROM not_found_scans WHERE userId = :userId AND barcode = :barcode")
     suspend fun deleteByBarcode(userId: String, barcode: String)
+
+    /** Empties the whole queue for one user. Scoped by userId, never global. */
+    @Query("DELETE FROM not_found_scans WHERE userId = :userId")
+    suspend fun deleteAllForUser(userId: String)
 }
